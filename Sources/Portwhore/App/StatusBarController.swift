@@ -46,20 +46,7 @@ final class StatusBarController: NSObject {
     }
 
     let snapshot = store.statusSnapshot
-    let symbolName: String
-    switch snapshot.tone {
-    case .idle:
-      symbolName = "network"
-    case .active:
-      symbolName = "network.badge.shield.half.filled"
-    case .warning:
-      symbolName = "network.slash"
-    }
-
-    if let image = NSImage(systemSymbolName: symbolName, accessibilityDescription: snapshot.accessibilityLabel) {
-      let config = NSImage.SymbolConfiguration(pointSize: 14, weight: .medium)
-      button.image = image.withSymbolConfiguration(config)
-    }
+    button.image = PortwhoreStatusImage.make(tone: snapshot.tone)
     button.title = ""
     button.toolTip = snapshot.accessibilityLabel
     button.setAccessibilityLabel(snapshot.accessibilityLabel)
