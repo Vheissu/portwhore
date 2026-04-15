@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Portwhore</title>
+<meta name="description" content="A shameless macOS menu bar app that watches your ports.">
+<style>
+  :root {
+    --bg: #0a0a12;
+    --card: #12121c;
+    --card-stroke: rgba(255,255,255,0.06);
+    --text: #fff;
+    --text-secondary: #8c94ad;
+    --text-muted: #5c617a;
+    --cyan: #00d9ff;
+    --cyan-deep: #002e3d;
+    --magenta: #ff0080;
+    --magenta-deep: #3d001e;
+    --amber: #ffbf00;
+    --amber-deep: #3d2e00;
+    --lips-red: #ed1c38;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: "SF Mono", "Fira Code", "JetBrains Mono", ui-monospace, monospace;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+  }
+
+  a { color: var(--cyan); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* --- Hero --- */
+  .hero {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 80vh;
+    padding: 4rem 2rem 2rem;
+    text-align: center;
+    position: relative;
+  }
+
+  .lips-wrap {
+    position: relative;
+    margin-bottom: 2rem;
+  }
+
+  .lips-glow {
+    position: absolute;
+    inset: -40%;
+    background: radial-gradient(ellipse, rgba(237,28,56,0.25) 0%, transparent 70%);
+    filter: blur(30px);
+    animation: pulse 3s ease-in-out infinite;
+    pointer-events: none;
+  }
+
+  .lips-svg { position: relative; width: 120px; height: 100px; }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 0.6; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.08); }
+  }
+
+  .hero h1 {
+    font-size: clamp(2.5rem, 8vw, 4.5rem);
+    font-weight: 900;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.75rem;
+    background: linear-gradient(135deg, #fff 60%, var(--cyan) 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+  }
+
+  .hero .tagline {
+    font-size: clamp(0.9rem, 2.5vw, 1.15rem);
+    color: var(--text-secondary);
+    font-weight: 500;
+    max-width: 420px;
+    line-height: 1.5;
+    margin-bottom: 2.5rem;
+  }
+
+  .cta-row { display: flex; gap: 1rem; flex-wrap: wrap; justify-content: center; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.7rem 1.6rem;
+    border-radius: 999px;
+    font-family: inherit;
+    font-size: 0.85rem;
+    font-weight: 700;
+    border: none;
+    cursor: pointer;
+    transition: transform 0.15s, box-shadow 0.15s;
+  }
+  .btn:hover { transform: translateY(-1px); text-decoration: none; }
+
+  .btn-primary {
+    background: var(--cyan);
+    color: #000;
+    box-shadow: 0 0 20px rgba(0,217,255,0.25);
+  }
+  .btn-primary:hover { box-shadow: 0 0 30px rgba(0,217,255,0.4); }
+
+  .btn-ghost {
+    background: rgba(255,255,255,0.06);
+    color: var(--text-secondary);
+    border: 1px solid var(--card-stroke);
+  }
+  .btn-ghost:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+  /* --- Features --- */
+  .features {
+    max-width: 800px;
+    margin: 0 auto;
+    padding: 2rem 2rem 4rem;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+  }
+
+  .feat {
+    padding: 1.25rem;
+    border-radius: 14px;
+    background: var(--card);
+    border: 1px solid var(--card-stroke);
+    transition: border-color 0.2s, transform 0.2s;
+  }
+  .feat:hover { transform: translateY(-2px); }
+
+  .feat-badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 800;
+    padding: 0.2rem 0.55rem;
+    border-radius: 999px;
+    margin-bottom: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .feat-cyan .feat-badge { background: var(--cyan-deep); color: var(--cyan); }
+  .feat-cyan:hover { border-color: rgba(0,217,255,0.25); }
+
+  .feat-magenta .feat-badge { background: var(--magenta-deep); color: var(--magenta); }
+  .feat-magenta:hover { border-color: rgba(255,0,128,0.25); }
+
+  .feat-amber .feat-badge { background: var(--amber-deep); color: var(--amber); }
+  .feat-amber:hover { border-color: rgba(255,191,0,0.25); }
+
+  .feat h3 {
+    font-size: 0.95rem;
+    font-weight: 700;
+    margin-bottom: 0.35rem;
+  }
+
+  .feat p {
+    font-size: 0.78rem;
+    color: var(--text-muted);
+    line-height: 1.45;
+  }
+
+  /* --- Install --- */
+  .install {
+    max-width: 600px;
+    margin: 0 auto;
+    padding: 0 2rem 5rem;
+    text-align: center;
+  }
+
+  .install h2 {
+    font-size: 1.3rem;
+    font-weight: 800;
+    margin-bottom: 1.25rem;
+  }
+
+  .code-block {
+    background: var(--card);
+    border: 1px solid var(--card-stroke);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    text-align: left;
+    font-size: 0.82rem;
+    line-height: 1.7;
+    color: var(--text-secondary);
+    overflow-x: auto;
+    position: relative;
+  }
+
+  .code-block .cmd { color: var(--cyan); }
+  .code-block .comment { color: var(--text-muted); }
+
+  .code-block .copy-btn {
+    position: absolute;
+    top: 0.75rem;
+    right: 0.75rem;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--card-stroke);
+    color: var(--text-muted);
+    font-family: inherit;
+    font-size: 0.7rem;
+    padding: 0.3rem 0.6rem;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: color 0.15s, background 0.15s;
+  }
+  .code-block .copy-btn:hover { color: #fff; background: rgba(255,255,255,0.1); }
+
+  .req {
+    margin-top: 1rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+  }
+
+  /* --- Footer --- */
+  footer {
+    text-align: center;
+    padding: 2rem;
+    font-size: 0.75rem;
+    color: var(--text-muted);
+    border-top: 1px solid var(--card-stroke);
+  }
+
+  footer a { color: var(--text-secondary); }
+</style>
+</head>
+<body>
+
+<!-- Hero -->
+<section class="hero">
+  <div class="lips-wrap">
+    <div class="lips-glow"></div>
+    <svg class="lips-svg" viewBox="0 0 22 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Upper lip -->
+      <path d="M1.5,9 C1.5,5.5 4,2.5 7,2.5 C9,2.5 10,6.5 11,6.5 C12,6.5 13,2.5 15,2.5 C18,2.5 20.5,5.5 20.5,9 C15,10.5 7,10.5 1.5,9Z"
+            fill="var(--lips-red)" stroke="#72000d" stroke-width="0.6"/>
+      <!-- Lower lip -->
+      <path d="M2.5,10 C7.5,11.2 14.5,11.2 19.5,10 C19.5,14 16,16.5 11,16.5 C6,16.5 2.5,14 2.5,10Z"
+            fill="var(--lips-red)" stroke="#72000d" stroke-width="0.6"/>
+      <!-- Shine -->
+      <ellipse cx="11" cy="13.5" rx="2.8" ry="1.5" fill="rgba(255,140,160,0.45)"/>
+    </svg>
+  </div>
+
+  <h1>Portwhore</h1>
+  <p class="tagline">A shameless macOS menu bar app that shows you what's using your ports and lets you kill it.</p>
+
+  <div class="cta-row">
+    <a href="https://github.com/Vheissu/portwhore" class="btn btn-primary">
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
+      GitHub
+    </a>
+    <a href="#install" class="btn btn-ghost">Get Started</a>
+  </div>
+</section>
+
+<!-- Features -->
+<section class="features">
+  <div class="feat feat-cyan">
+    <span class="feat-badge">scan</span>
+    <h3>Real-Time Monitoring</h3>
+    <p>Watches TCP &amp; UDP ports with configurable refresh. Knows who owns what.</p>
+  </div>
+
+  <div class="feat feat-magenta">
+    <span class="feat-badge">kill</span>
+    <h3>One-Click Kill</h3>
+    <p>Stop or force-kill processes. Bulk-kill everything you own in one shot.</p>
+  </div>
+
+  <div class="feat feat-cyan">
+    <span class="feat-badge">search</span>
+    <h3>Search &amp; Filter</h3>
+    <p>Find ports by number, process name, PID, user, or custom label.</p>
+  </div>
+
+  <div class="feat feat-amber">
+    <span class="feat-badge">config</span>
+    <h3>Custom Watch Lists</h3>
+    <p>Pick the ports you care about. Label them. Forget the rest.</p>
+  </div>
+
+  <div class="feat feat-cyan">
+    <span class="feat-badge">info</span>
+    <h3>Smart Details</h3>
+    <p>Transport badges, well-known port names, endpoints, full command lines.</p>
+  </div>
+
+  <div class="feat feat-magenta">
+    <span class="feat-badge">copy</span>
+    <h3>Copy Kill Commands</h3>
+    <p>Copies <code>sudo kill</code> for protected ports you can't touch from the app.</p>
+  </div>
+</section>
+
+<!-- Install -->
+<section class="install" id="install">
+  <h2>Get It</h2>
+  <div class="code-block">
+    <button class="copy-btn" onclick="copyInstall()">Copy</button>
+    <span class="comment"># Clone &amp; build</span><br>
+    <span class="cmd">git clone</span> https://github.com/Vheissu/portwhore.git<br>
+    <span class="cmd">cd</span> portwhore<br>
+    <span class="cmd">swift build</span> -c release<br>
+    <br>
+    <span class="comment"># Run it</span><br>
+    <span class="cmd">.build/release/Portwhore</span>
+  </div>
+  <p class="req">Requires macOS 26 &amp; Swift 6.2</p>
+</section>
+
+<footer>
+  MIT License &middot; <a href="https://github.com/Vheissu/portwhore">Vheissu/portwhore</a>
+</footer>
+
+<script>
+function copyInstall() {
+  const text = `git clone https://github.com/Vheissu/portwhore.git\ncd portwhore\nswift build -c release\n.build/release/Portwhore`;
+  navigator.clipboard.writeText(text).then(() => {
+    const btn = document.querySelector('.copy-btn');
+    btn.textContent = 'Copied!';
+    setTimeout(() => btn.textContent = 'Copy', 1500);
+  });
+}
+</script>
+</body>
+</html>
