@@ -1,72 +1,19 @@
 import AppKit
-import SwiftUI
 
-struct MenuBarLabel: View {
-  let totalListeners: Int
-  let occupiedWatchedPorts: Int
-  let hasError: Bool
-
-  var body: some View {
-    HStack(spacing: 6) {
-      Image(nsImage: PortwhoreStatusImage.make(tone: tone))
-        .interpolation(.high)
-        .accessibilityLabel(accessibilityLabel)
-
-      Text(statusText)
-        .font(.system(size: 11, weight: .black, design: .rounded))
-        .foregroundStyle(.primary)
-        .tracking(0.2)
-    }
-  }
-
-  private var tone: PortwhoreStatusImage.Tone {
-    if hasError {
-      return .warning
-    }
-
-    if totalListeners > 0 || occupiedWatchedPorts > 0 {
-      return .active
-    }
-
-    return .idle
-  }
-
-  private var accessibilityLabel: String {
-    switch tone {
-    case .idle:
-      return "Portwhore idle"
-    case .active:
-      return "Portwhore active"
-    case .warning:
-      return "Portwhore warning"
-    }
-  }
-
-  private var statusText: String {
-    if hasError {
-      return "!"
-    }
-
-    if totalListeners > 0 {
-      return "\(totalListeners)"
-    }
-
-    if occupiedWatchedPorts > 0 {
-      return "\(occupiedWatchedPorts)"
-    }
-
-    return "PW"
-  }
+enum PortwhoreStatusTone: Sendable {
+  case idle
+  case active
+  case warning
 }
 
-private enum PortwhoreStatusImage {
-  enum Tone {
-    case idle
-    case active
-    case warning
-  }
+struct PortwhoreStatusSnapshot: Sendable {
+  let tone: PortwhoreStatusTone
+  let text: String
+  let accessibilityLabel: String
+}
 
-  static func make(tone: Tone) -> NSImage {
+enum PortwhoreStatusImage {
+  static func make(tone: PortwhoreStatusTone) -> NSImage {
     let size = NSSize(width: 18, height: 14)
     let image = NSImage(size: size, flipped: false) { rect in
       NSColor.clear.setFill()
@@ -115,9 +62,11 @@ private enum PortwhoreStatusImage {
       case .idle:
         break
       case .active:
+        NSColor.systemGreen.setFill()
         let badge = NSBezierPath(ovalIn: NSRect(x: 13.8, y: 8.7, width: 3.1, height: 3.1))
         badge.fill()
       case .warning:
+        NSColor.systemRed.setFill()
         let badge = NSBezierPath()
         badge.move(to: NSPoint(x: 15.35, y: 12.2))
         badge.line(to: NSPoint(x: 17.0, y: 9.0))

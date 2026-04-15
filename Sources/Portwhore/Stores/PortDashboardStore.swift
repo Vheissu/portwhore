@@ -11,6 +11,7 @@ final class PortDashboardStore {
   var lastUpdated: Date?
   var lastError: String?
   var lastActionMessage: String?
+  var onStatusChange: (() -> Void)?
 
   private let scanner = PortScanner()
   private let processController = ProcessController()
@@ -49,6 +50,44 @@ final class PortDashboardStore {
     records.filter { !$0.listeners.allSatisfy(\.isOwnedByCurrentUser) }.count
   }
 
+  var statusSnapshot: PortwhoreStatusSnapshot {
+    let tone: PortwhoreStatusTone
+    if lastError != nil {
+      tone = .warning
+    } else if !records.isEmpty || !occupiedWatchedPorts.isEmpty {
+      tone = .active
+    } else {
+      tone = .idle
+    }
+
+    let text: String
+    if lastError != nil {
+      text = "!"
+    } else if !records.isEmpty {
+      text = records.count > 99 ? "99+" : "\(records.count)"
+    } else if !occupiedWatchedPorts.isEmpty {
+      text = occupiedWatchedPorts.count > 99 ? "99+" : "\(occupiedWatchedPorts.count)"
+    } else {
+      text = "PW"
+    }
+
+    let accessibilityLabel: String
+    switch tone {
+    case .idle:
+      accessibilityLabel = "Portwhore idle"
+    case .active:
+      accessibilityLabel = "Portwhore active with \(text) busy ports"
+    case .warning:
+      accessibilityLabel = "Portwhore warning"
+    }
+
+    return PortwhoreStatusSnapshot(
+      tone: tone,
+      text: text,
+      accessibilityLabel: accessibilityLabel
+    )
+  }
+
   func refreshNow() async {
     guard !isRefreshing else {
       return
@@ -66,8 +105,10 @@ final class PortDashboardStore {
       self.records = records
       self.lastUpdated = Date()
       self.lastError = nil
+      notifyStatusChange()
     } catch {
       self.lastError = error.localizedDescription
+      notifyStatusChange()
     }
   }
 
@@ -97,6 +138,7 @@ final class PortDashboardStore {
       await refreshNow()
     } catch {
       lastError = error.localizedDescription
+      notifyStatusChange()
     }
   }
 
@@ -107,5 +149,9 @@ final class PortDashboardStore {
       try? await Task.sleep(for: .seconds(5))
       await refreshNow()
     }
+  }
+
+  private func notifyStatusChange() {
+    onStatusChange?()
   }
 }

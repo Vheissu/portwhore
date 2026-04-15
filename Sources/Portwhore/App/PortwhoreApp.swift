@@ -1,29 +1,24 @@
 import AppKit
 import SwiftUI
 
+@MainActor
 final class PortwhoreAppDelegate: NSObject, NSApplicationDelegate {
+  let store = PortDashboardStore()
+  private var statusBarController: StatusBarController?
+
   func applicationDidFinishLaunching(_ notification: Notification) {
-    // This app is intentionally menu-bar-only.
     NSApp.setActivationPolicy(.accessory)
+    statusBarController = StatusBarController(store: store)
   }
 }
 
 @main
 struct PortwhoreApp: App {
   @NSApplicationDelegateAdaptor(PortwhoreAppDelegate.self) private var appDelegate
-  @State private var store = PortDashboardStore()
 
   var body: some Scene {
-    MenuBarExtra {
-      DashboardView(store: store)
-        .frame(width: 448, height: 640)
-    } label: {
-      MenuBarLabel(
-        totalListeners: store.records.count,
-        occupiedWatchedPorts: store.occupiedWatchedPorts.count,
-        hasError: store.lastError != nil
-      )
+    Settings {
+      EmptyView()
     }
-    .menuBarExtraStyle(.window)
   }
 }
