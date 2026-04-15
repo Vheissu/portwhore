@@ -1,54 +1,90 @@
 import SwiftUI
 
 struct DashboardView: View {
-  let store: PortDashboardStore
+  @Bindable var store: PortDashboardStore
 
   var body: some View {
     ZStack {
       PortwhorePalette.background.ignoresSafeArea()
 
-      ScrollView(showsIndicators: false) {
-        VStack(alignment: .leading, spacing: 14) {
-          headerBar
+      if store.showSettings {
+        SettingsView(store: store)
+          .transition(.move(edge: .trailing))
+      } else {
+        mainContent
+          .transition(.move(edge: .leading))
+      }
+    }
+    .animation(.easeInOut(duration: 0.2), value: store.showSettings)
+    .alert("Kill All My Ports?", isPresented: $store.confirmKillAll) {
+      Button("Cancel", role: .cancel) {}
+      Button("Kill All", role: .destructive) {
+        store.killAllMyPorts()
+      }
+    } message: {
+      Text("This will stop \(store.killableCount) process(es) you own across all ports.")
+    }
+  }
 
-          if let msg = store.lastActionMessage {
-            actionBanner(msg)
-          }
+  // MARK: - Main Content
 
-          if let err = store.lastError {
-            errorBanner(err)
-          }
+  private var mainContent: some View {
+    ScrollView(showsIndicators: false) {
+      VStack(alignment: .leading, spacing: 14) {
+        headerBar
+        searchBar
 
-          sectionCard(
-            title: "Hot Ports",
-            subtitle: "\(store.occupiedWatchedPorts.count) busy · \(store.watchedPorts.count - store.occupiedWatchedPorts.count) free"
-          ) {
-            VStack(spacing: 6) {
-              ForEach(store.watchedSlots) { slot in
-                WatchedPortRowView(slot: slot) { record, force in
-                  store.freePort(record, force: force)
-                }
-              }
+        if let msg = store.lastActionMessage {
+          actionBanner(msg)
+        }
+
+        if let err = store.lastError {
+          errorBanner(err)
+        }
+
+        sortToolbar
+
+        sectionCard(
+          title: "Hot Ports",
+          subtitle: "\(store.occupiedWatchedPorts.count) busy · \(store.watchedPorts.count - store.occupiedWatchedPorts.count) free"
+        ) {
+          VStack(spacing: 6) {
+            ForEach(store.filteredWatchedSlots) { slot in
+              WatchedPortRowView(slot: slot, store: store)
             }
           }
+        }
 
-          if !store.otherRecords.isEmpty {
-            sectionCard(
-              title: "Other Listeners",
-              subtitle: "\(store.otherRecords.count) active"
-            ) {
-              VStack(spacing: 6) {
-                ForEach(store.otherRecords) { record in
-                  ActivePortRowView(record: record) { target, force in
-                    store.freePort(target, force: force)
-                  }
-                }
+        if !store.filteredOtherRecords.isEmpty {
+          sectionCard(
+            title: "Other Listeners",
+            subtitle: "\(store.filteredOtherRecords.count) active"
+          ) {
+            VStack(spacing: 6) {
+              ForEach(store.filteredOtherRecords) { record in
+                ActivePortRowView(record: record, store: store)
               }
             }
           }
         }
-        .padding(16)
+
+        if !store.searchQuery.isEmpty && store.filteredWatchedSlots.isEmpty && store.filteredOtherRecords.isEmpty {
+          HStack {
+            Spacer()
+            VStack(spacing: 6) {
+              Image(systemName: "magnifyingglass")
+                .font(.system(size: 24, weight: .light))
+                .foregroundStyle(PortwhorePalette.textMuted)
+              Text("No matches for \"\(store.searchQuery)\"")
+                .font(.system(size: 12, weight: .medium, design: .monospaced))
+                .foregroundStyle(PortwhorePalette.textMuted)
+            }
+            .padding(.vertical, 24)
+            Spacer()
+          }
+        }
       }
+      .padding(16)
     }
   }
 
@@ -66,6 +102,32 @@ struct DashboardView: View {
           .foregroundStyle(.white)
 
         Spacer()
+
+        Button {
+          store.showSettings = true
+        } label: {
+          Image(systemName: "gearshape")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(PortwhorePalette.textSecondary)
+        }
+        .buttonStyle(.plain)
+        .frame(width: 26, height: 26)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .contentShape(Rectangle())
+        .help("Settings")
+
+        Button {
+          store.exportPortList()
+        } label: {
+          Image(systemName: "doc.on.clipboard")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(PortwhorePalette.textSecondary)
+        }
+        .buttonStyle(.plain)
+        .frame(width: 26, height: 26)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .contentShape(Rectangle())
+        .help("Export Port List")
 
         Button {
           Task { await store.refreshNow() }
@@ -128,8 +190,95 @@ struct DashboardView: View {
         .foregroundStyle(PortwhorePalette.warning)
       Text("protected")
         .foregroundStyle(PortwhorePalette.textMuted)
+
+      if store.killableCount > 0 {
+        Spacer()
+        Button {
+          store.confirmKillAll = true
+        } label: {
+          HStack(spacing: 4) {
+            Image(systemName: "xmark.circle")
+              .font(.system(size: 9, weight: .bold))
+            Text("Kill All Mine")
+          }
+          .font(.system(size: 9, weight: .bold, design: .monospaced))
+          .foregroundStyle(PortwhorePalette.warning)
+          .padding(.horizontal, 8)
+          .padding(.vertical, 4)
+          .background(PortwhorePalette.warningDeep, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .help("Kill all processes you own")
+      }
     }
     .font(.system(size: 11, weight: .medium, design: .monospaced))
+  }
+
+  // MARK: - Search
+
+  private var searchBar: some View {
+    HStack(spacing: 8) {
+      Image(systemName: "magnifyingglass")
+        .font(.system(size: 12, weight: .medium))
+        .foregroundStyle(PortwhorePalette.textMuted)
+
+      TextField("Search ports, processes, PIDs...", text: $store.searchQuery)
+        .textFieldStyle(.plain)
+        .font(.system(size: 12, weight: .medium, design: .monospaced))
+        .foregroundStyle(.white)
+
+      if !store.searchQuery.isEmpty {
+        Button {
+          store.searchQuery = ""
+        } label: {
+          Image(systemName: "xmark.circle.fill")
+            .font(.system(size: 12))
+            .foregroundStyle(PortwhorePalette.textMuted)
+        }
+        .buttonStyle(.plain)
+      }
+    }
+    .padding(10)
+    .background(PortwhorePalette.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    .overlay(
+      RoundedRectangle(cornerRadius: 10, style: .continuous)
+        .stroke(PortwhorePalette.cardStroke, lineWidth: 1)
+    )
+  }
+
+  // MARK: - Sort Toolbar
+
+  private var sortToolbar: some View {
+    HStack(spacing: 8) {
+      Text("Sort:")
+        .font(.system(size: 10, weight: .medium, design: .monospaced))
+        .foregroundStyle(PortwhorePalette.textMuted)
+
+      ForEach(PortSortOrder.allCases, id: \.self) { order in
+        Button {
+          store.sortOrder = order
+        } label: {
+          Text(order.rawValue)
+            .font(.system(size: 10, weight: store.sortOrder == order ? .bold : .medium, design: .monospaced))
+            .foregroundStyle(store.sortOrder == order ? PortwhorePalette.action : PortwhorePalette.textMuted)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+              store.sortOrder == order ? PortwhorePalette.actionDeep : Color.white.opacity(0.03),
+              in: Capsule()
+            )
+        }
+        .buttonStyle(.plain)
+      }
+
+      Spacer()
+
+      if let lastUpdated = store.lastUpdated {
+        Text(DateFormatting.relativeString(for: lastUpdated))
+          .font(.system(size: 10, weight: .medium, design: .monospaced))
+          .foregroundStyle(PortwhorePalette.textMuted.opacity(0.6))
+      }
+    }
   }
 
   // MARK: - Banners

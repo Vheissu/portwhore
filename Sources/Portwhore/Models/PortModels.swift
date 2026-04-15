@@ -12,6 +12,12 @@ enum PortOwnershipTone: Sendable {
   case protected
 }
 
+enum PortSortOrder: String, CaseIterable, Sendable {
+  case portNumber = "Port"
+  case processName = "Name"
+  case pid = "PID"
+}
+
 struct PortListener: Identifiable, Hashable, Sendable {
   let port: Int
   let pid: Int
@@ -94,6 +100,11 @@ struct PortRecord: Identifiable, Hashable, Sendable {
       return "\(uniquePIDs.count) processes • \(userLabel)"
     }
     return "PID \(primary.pid) • \(userLabel)"
+  }
+
+  var transportLabel: String {
+    let transports = Set(listeners.map(\.transport))
+    return transports.map(\.rawValue).sorted().joined(separator: "/")
   }
 }
 

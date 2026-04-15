@@ -1,0 +1,45 @@
+enum WellKnownPorts {
+  static let descriptions: [Int: String] = [
+    21: "FTP",
+    22: "SSH",
+    25: "SMTP",
+    53: "DNS",
+    80: "HTTP",
+    443: "HTTPS",
+    1433: "SQL Server",
+    1521: "Oracle DB",
+    2181: "ZooKeeper",
+    3000: "Dev Server",
+    3001: "Dev Server Alt",
+    3306: "MySQL",
+    4200: "Angular Dev",
+    4321: "Astro Dev",
+    5000: "Flask / Dev",
+    5173: "Vite Dev",
+    5432: "PostgreSQL",
+    5433: "PostgreSQL Alt",
+    5500: "Live Server",
+    5672: "RabbitMQ",
+    6379: "Redis",
+    6380: "Redis Alt",
+    8000: "HTTP Alt",
+    8080: "HTTP Proxy",
+    8081: "HTTP Alt",
+    8443: "HTTPS Alt",
+    8888: "Jupyter",
+    8983: "Solr",
+    9000: "PHP-FPM",
+    9090: "Prometheus",
+    9200: "Elasticsearch",
+    9229: "Node Inspector",
+    9300: "Elasticsearch Transport",
+    11211: "Memcached",
+    15672: "RabbitMQ Management",
+    27017: "MongoDB",
+    27018: "MongoDB Alt",
+  ]
+
+  static func description(for port: Int) -> String? {
+    descriptions[port]
+  }
+}
