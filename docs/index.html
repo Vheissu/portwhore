@@ -41,8 +41,7 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    min-height: 80vh;
-    padding: 4rem 2rem 2rem;
+    padding: 5rem 2rem 3rem;
     text-align: center;
     position: relative;
   }
@@ -118,6 +117,51 @@
     border: 1px solid var(--card-stroke);
   }
   .btn-ghost:hover { background: rgba(255,255,255,0.1); color: #fff; }
+
+  /* --- Preview --- */
+  .preview {
+    display: flex;
+    justify-content: center;
+    padding: 0 2rem 4rem;
+  }
+
+  .preview-frame {
+    position: relative;
+    max-width: 420px;
+    width: 100%;
+  }
+
+  .preview-frame::before {
+    content: '';
+    position: absolute;
+    inset: -1px;
+    border-radius: 18px;
+    padding: 1px;
+    background: linear-gradient(160deg, rgba(0,217,255,0.3), rgba(255,0,128,0.15), transparent 60%);
+    -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  .preview-frame::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 18px;
+    box-shadow:
+      0 25px 60px rgba(0,0,0,0.5),
+      0 0 80px rgba(0,217,255,0.08),
+      0 0 120px rgba(237,28,56,0.05);
+    pointer-events: none;
+  }
+
+  .preview-frame img {
+    display: block;
+    width: 100%;
+    height: auto;
+    border-radius: 16px;
+  }
 
   /* --- Features --- */
   .features {
@@ -264,6 +308,13 @@
   </div>
 </section>
 
+<!-- Preview -->
+<section class="preview">
+  <div class="preview-frame">
+    <img src="screenshot.png" alt="Portwhore showing active ports with search, sort, and one-click kill" loading="lazy">
+  </div>
+</section>
+
 <!-- Features -->
 <section class="features">
   <div class="feat feat-cyan">
@@ -306,17 +357,26 @@
 <!-- Install -->
 <section class="install" id="install">
   <h2>Get It</h2>
-  <div class="code-block">
-    <button class="copy-btn" onclick="copyInstall()">Copy</button>
-    <span class="comment"># Clone &amp; build</span><br>
-    <span class="cmd">git clone</span> https://github.com/Vheissu/portwhore.git<br>
-    <span class="cmd">cd</span> portwhore<br>
-    <span class="cmd">swift build</span> -c release<br>
-    <br>
-    <span class="comment"># Run it</span><br>
-    <span class="cmd">.build/release/Portwhore</span>
-  </div>
-  <p class="req">Requires macOS 26 &amp; Swift 6.2</p>
+
+  <a href="https://github.com/Vheissu/portwhore/raw/main/Portwhore.zip" class="btn btn-primary" style="margin-bottom:1.5rem; font-size:0.95rem; padding:0.85rem 2rem;">
+    <svg width="16" height="16" viewBox="0 0 16 16" fill="currentColor"><path d="M8 12l-4-4h2.5V2h3v6H12L8 12zM2 14h12v-1.5H2V14z"/></svg>
+    Download Portwhore.zip
+  </a>
+
+  <p class="req" style="margin-bottom:1.5rem;">Unzip, drag to Applications, right-click &gt; Open on first launch (unsigned app).</p>
+
+  <details style="text-align:left;">
+    <summary style="cursor:pointer; color:var(--text-secondary); font-size:0.82rem; font-weight:600; margin-bottom:0.75rem;">Or build from source</summary>
+    <div class="code-block">
+      <button class="copy-btn" onclick="copyInstall()">Copy</button>
+      <span class="cmd">git clone</span> https://github.com/Vheissu/portwhore.git<br>
+      <span class="cmd">cd</span> portwhore<br>
+      <span class="cmd">swift build</span> -c release<br>
+      <span class="cmd">open</span> .build/release/Portwhore
+    </div>
+  </details>
+
+  <p class="req">Requires macOS 26 (arm64)</p>
 </section>
 
 <footer>
