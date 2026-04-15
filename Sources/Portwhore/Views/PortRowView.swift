@@ -18,136 +18,117 @@ struct ActivePortRowView: View {
   let onFree: (PortRecord, Bool) -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(alignment: .top, spacing: 12) {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(alignment: .center, spacing: 10) {
         portBadge
 
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
           Text(record.displayTitle)
-            .font(.system(size: 18, weight: .semibold, design: .rounded))
+            .font(.system(size: 14, weight: .semibold, design: .monospaced))
             .foregroundStyle(.white)
             .lineLimit(1)
 
           Text(record.subtitle)
-            .font(.system(size: 12, weight: .medium, design: .rounded))
+            .font(.system(size: 11, weight: .medium, design: .monospaced))
             .foregroundStyle(PortwhorePalette.textSecondary)
-
-          Text(record.primary.trimmedCommand)
-            .font(.system(size: 11, weight: .regular, design: .monospaced))
-            .foregroundStyle(PortwhorePalette.textMuted)
             .lineLimit(1)
         }
 
-        Spacer(minLength: 8)
+        Spacer(minLength: 4)
 
-        VStack(alignment: .trailing, spacing: 8) {
-          Button(record.primaryActionTitle) {
-            onFree(record, false)
-          }
-          .buttonStyle(ActionPillButtonStyle(tone: record.ownershipTone))
-
-          Menu {
-            Button("Copy PID") {
-              Pasteboard.copy(record.uniquePIDs.map(String.init).joined(separator: ", "))
-            }
-
-            Button("Copy Command") {
-              let commands = record.listeners.map(\.trimmedCommand).joined(separator: "\n")
-              Pasteboard.copy(commands)
-            }
-
-            Divider()
-
-            Button("Force Kill") {
-              onFree(record, true)
-            }
-          } label: {
-            Image(systemName: "ellipsis.circle")
-              .font(.system(size: 18, weight: .medium))
-              .foregroundStyle(PortwhorePalette.textSecondary)
-          }
-          .menuStyle(.borderlessButton)
-          .menuIndicator(.hidden)
+        Button(record.primaryActionTitle) {
+          onFree(record, false)
         }
+        .buttonStyle(ActionPillButtonStyle(tone: record.ownershipTone))
+
+        Menu {
+          Button("Copy PID") {
+            Pasteboard.copy(record.uniquePIDs.map(String.init).joined(separator: ", "))
+          }
+
+          Button("Copy Command") {
+            let commands = record.listeners.map(\.trimmedCommand).joined(separator: "\n")
+            Pasteboard.copy(commands)
+          }
+
+          Divider()
+
+          Button("Force Kill") {
+            onFree(record, true)
+          }
+        } label: {
+          Image(systemName: "ellipsis")
+            .font(.system(size: 14, weight: .medium))
+            .foregroundStyle(PortwhorePalette.textMuted)
+            .frame(width: 24, height: 24)
+            .contentShape(Rectangle())
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
       }
 
       if record.hasMultipleListeners {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
           ForEach(record.listeners.dropFirst()) { listener in
-            HStack(spacing: 8) {
+            HStack(spacing: 6) {
               Circle()
                 .fill(PortwhorePalette.textMuted)
-                .frame(width: 4, height: 4)
+                .frame(width: 3, height: 3)
 
-              Text("\(listener.processName) • PID \(listener.pid)")
-                .font(.system(size: 11, weight: .medium, design: .rounded))
+              Text("\(listener.processName) · PID \(listener.pid)")
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(PortwhorePalette.textSecondary)
 
-              Spacer(minLength: 8)
+              Spacer(minLength: 4)
 
               Text(listener.user)
-                .font(.system(size: 11, weight: .semibold, design: .rounded))
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
                 .foregroundStyle(PortwhorePalette.textMuted)
             }
           }
         }
-        .padding(.leading, 62)
+        .padding(.leading, 52)
       }
     }
-    .padding(14)
-    .background(backgroundGradient, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    .padding(12)
+    .background(rowBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     .overlay(
-      RoundedRectangle(cornerRadius: 22, style: .continuous)
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
         .stroke(borderColor, lineWidth: 1)
     )
   }
 
   private var portBadge: some View {
-    Text("\(record.port)")
-      .font(.system(size: 24, weight: .black, design: .rounded))
+    Text(verbatim: "\(record.port)")
+      .font(.system(size: 18, weight: .black, design: .monospaced))
       .foregroundStyle(badgeTextColor)
-      .padding(.horizontal, 14)
-      .padding(.vertical, 10)
-      .background(badgeBackground, in: Capsule())
+      .frame(minWidth: 48)
+      .padding(.horizontal, 8)
+      .padding(.vertical, 5)
+      .background(badgeBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
   }
 
-  private var backgroundGradient: LinearGradient {
+  private var rowBackground: Color {
     switch record.ownershipTone {
     case .mine:
-      return LinearGradient(
-        colors: [Color(red: 0.09, green: 0.22, blue: 0.16), Color(red: 0.05, green: 0.14, blue: 0.10)],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-      )
+      return Color(red: 0.02, green: 0.09, blue: 0.12)
     case .shared:
-      return LinearGradient(
-        colors: [Color(red: 0.16, green: 0.20, blue: 0.11), Color(red: 0.08, green: 0.11, blue: 0.07)],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-      )
+      return Color(red: 0.12, green: 0.10, blue: 0.03)
     case .protected:
-      return LinearGradient(
-        colors: [Color(red: 0.24, green: 0.11, blue: 0.12), Color(red: 0.10, green: 0.06, blue: 0.07)],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-      )
+      return Color(red: 0.14, green: 0.03, blue: 0.08)
     case .free:
-      return LinearGradient(
-        colors: [PortwhorePalette.card, PortwhorePalette.card],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-      )
+      return PortwhorePalette.card
     }
   }
 
   private var borderColor: Color {
     switch record.ownershipTone {
     case .mine:
-      return PortwhorePalette.action.opacity(0.22)
+      return PortwhorePalette.action.opacity(0.20)
     case .shared:
-      return Color.orange.opacity(0.28)
+      return PortwhorePalette.amber.opacity(0.20)
     case .protected:
-      return PortwhorePalette.warning.opacity(0.35)
+      return PortwhorePalette.warning.opacity(0.25)
     case .free:
       return PortwhorePalette.cardStroke
     }
@@ -156,13 +137,13 @@ struct ActivePortRowView: View {
   private var badgeBackground: Color {
     switch record.ownershipTone {
     case .mine:
-      return PortwhorePalette.actionDeep.opacity(0.88)
+      return PortwhorePalette.actionDeep
     case .shared:
-      return Color.orange.opacity(0.16)
+      return PortwhorePalette.amberDeep
     case .protected:
-      return PortwhorePalette.warningDeep.opacity(0.88)
+      return PortwhorePalette.warningDeep
     case .free:
-      return Color.white.opacity(0.10)
+      return Color.white.opacity(0.06)
     }
   }
 
@@ -171,7 +152,7 @@ struct ActivePortRowView: View {
     case .mine:
       return PortwhorePalette.action
     case .shared:
-      return Color.orange.opacity(0.92)
+      return PortwhorePalette.amber
     case .protected:
       return PortwhorePalette.warning
     case .free:
@@ -184,35 +165,30 @@ struct FreePortRowView: View {
   let port: Int
 
   var body: some View {
-    HStack(spacing: 12) {
-      Text("\(port)")
-        .font(.system(size: 24, weight: .black, design: .rounded))
-        .foregroundStyle(PortwhorePalette.free)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(Color.white.opacity(0.08), in: Capsule())
+    HStack(spacing: 10) {
+      Text(verbatim: "\(port)")
+        .font(.system(size: 18, weight: .black, design: .monospaced))
+        .foregroundStyle(PortwhorePalette.free.opacity(0.5))
+        .frame(minWidth: 48)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(Color.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-      VStack(alignment: .leading, spacing: 4) {
-        Text("Free")
-          .font(.system(size: 18, weight: .semibold, design: .rounded))
-          .foregroundStyle(.white)
+      Text("Free")
+        .font(.system(size: 13, weight: .medium, design: .monospaced))
+        .foregroundStyle(PortwhorePalette.textMuted)
 
-        Text("Ready for your next dev server")
-          .font(.system(size: 12, weight: .medium, design: .rounded))
-          .foregroundStyle(PortwhorePalette.textSecondary)
-      }
+      Spacer()
 
-      Spacer(minLength: 8)
-
-      Image(systemName: "checkmark.seal.fill")
-        .font(.system(size: 20))
-        .foregroundStyle(PortwhorePalette.action)
+      Image(systemName: "checkmark.circle")
+        .font(.system(size: 15, weight: .medium))
+        .foregroundStyle(PortwhorePalette.action.opacity(0.3))
     }
-    .padding(14)
-    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+    .padding(12)
+    .background(PortwhorePalette.card.opacity(0.4), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     .overlay(
-      RoundedRectangle(cornerRadius: 22, style: .continuous)
-        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+      RoundedRectangle(cornerRadius: 12, style: .continuous)
+        .stroke(Color.white.opacity(0.03), lineWidth: 1)
     )
   }
 }
@@ -222,13 +198,13 @@ struct ActionPillButtonStyle: ButtonStyle {
 
   func makeBody(configuration: Configuration) -> some View {
     configuration.label
-      .font(.system(size: 12, weight: .bold, design: .rounded))
+      .font(.system(size: 11, weight: .bold, design: .monospaced))
       .foregroundStyle(foregroundColor)
-      .padding(.horizontal, 14)
-      .padding(.vertical, 8)
-      .background(backgroundColor.opacity(configuration.isPressed ? 0.82 : 1), in: Capsule())
-      .scaleEffect(configuration.isPressed ? 0.98 : 1)
-      .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+      .padding(.horizontal, 12)
+      .padding(.vertical, 6)
+      .background(backgroundColor.opacity(configuration.isPressed ? 0.75 : 1), in: Capsule())
+      .scaleEffect(configuration.isPressed ? 0.96 : 1)
+      .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
   }
 
   private var backgroundColor: Color {
@@ -236,20 +212,20 @@ struct ActionPillButtonStyle: ButtonStyle {
     case .mine:
       return PortwhorePalette.action
     case .shared:
-      return Color.orange.opacity(0.84)
+      return PortwhorePalette.amber
     case .protected:
       return PortwhorePalette.warning
     case .free:
-      return Color.white.opacity(0.12)
+      return Color.white.opacity(0.10)
     }
   }
 
   private var foregroundColor: Color {
     switch tone {
     case .mine:
-      return PortwhorePalette.actionDeep
+      return Color.black
     case .shared:
-      return Color.black.opacity(0.75)
+      return Color.black
     case .protected:
       return Color.white
     case .free:

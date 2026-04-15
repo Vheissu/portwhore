@@ -16,6 +16,7 @@ final class PortDashboardStore {
   private let scanner = PortScanner()
   private let processController = ProcessController()
   private var refreshTask: Task<Void, Never>?
+  private var clearActionTask: Task<Void, Never>?
 
   init() {
     refreshTask = Task { [weak self] in
@@ -128,10 +129,12 @@ final class PortDashboardStore {
       if result.failures.isEmpty {
         let verb = force ? "Force-killed" : "Stopped"
         lastActionMessage = "\(verb) \(result.killedPIDs.count) process" + (result.killedPIDs.count == 1 ? "" : "es") + " on \(record.port)."
+        scheduleActionClear()
       } else if result.killedPIDs.isEmpty {
         lastError = result.failures.joined(separator: "\n")
       } else {
         lastActionMessage = "Freed part of \(record.port)."
+        scheduleActionClear()
         lastError = result.failures.joined(separator: "\n")
       }
 
@@ -148,6 +151,15 @@ final class PortDashboardStore {
     while !Task.isCancelled {
       try? await Task.sleep(for: .seconds(5))
       await refreshNow()
+    }
+  }
+
+  private func scheduleActionClear() {
+    clearActionTask?.cancel()
+    clearActionTask = Task { [weak self] in
+      try? await Task.sleep(for: .seconds(3))
+      guard !Task.isCancelled else { return }
+      self?.lastActionMessage = nil
     }
   }
 

@@ -5,17 +5,25 @@ struct DashboardView: View {
 
   var body: some View {
     ZStack {
-      background
+      PortwhorePalette.background.ignoresSafeArea()
 
       ScrollView(showsIndicators: false) {
-        VStack(alignment: .leading, spacing: 18) {
-          headerCard
+        VStack(alignment: .leading, spacing: 14) {
+          headerBar
+
+          if let msg = store.lastActionMessage {
+            actionBanner(msg)
+          }
+
+          if let err = store.lastError {
+            errorBanner(err)
+          }
 
           sectionCard(
             title: "Hot Ports",
-            subtitle: "\(store.occupiedWatchedPorts.count) busy • \(store.watchedPorts.count - store.occupiedWatchedPorts.count) free"
+            subtitle: "\(store.occupiedWatchedPorts.count) busy · \(store.watchedPorts.count - store.occupiedWatchedPorts.count) free"
           ) {
-            VStack(spacing: 10) {
+            VStack(spacing: 6) {
               ForEach(store.watchedSlots) { slot in
                 WatchedPortRowView(slot: slot) { record, force in
                   store.freePort(record, force: force)
@@ -29,7 +37,7 @@ struct DashboardView: View {
               title: "Other Listeners",
               subtitle: "\(store.otherRecords.count) active"
             ) {
-              VStack(spacing: 10) {
+              VStack(spacing: 6) {
                 ForEach(store.otherRecords) { record in
                   ActivePortRowView(record: record) { target, force in
                     store.freePort(target, force: force)
@@ -38,189 +46,153 @@ struct DashboardView: View {
               }
             }
           }
-
-          footerCard
         }
-        .padding(18)
+        .padding(16)
       }
     }
   }
 
-  private var background: some View {
-    ZStack {
-      LinearGradient(
-        colors: [PortwhorePalette.backgroundTop, PortwhorePalette.backgroundBottom],
-        startPoint: .topLeading,
-        endPoint: .bottomTrailing
-      )
+  // MARK: - Header
 
-      RadialGradient(
-        colors: [PortwhorePalette.glow.opacity(0.28), .clear],
-        center: .topLeading,
-        startRadius: 30,
-        endRadius: 320
-      )
-      .blur(radius: 6)
-    }
-    .ignoresSafeArea()
-  }
-
-  private var headerCard: some View {
-    VStack(alignment: .leading, spacing: 16) {
-      HStack(alignment: .top) {
-        VStack(alignment: .leading, spacing: 8) {
-          HStack(spacing: 10) {
-            Image(systemName: "ladybug.circle.fill")
-              .font(.system(size: 26))
-              .foregroundStyle(PortwhorePalette.free)
-
-            Text("Portwhore")
-              .font(.system(size: 30, weight: .black, design: .rounded))
-              .foregroundStyle(.white)
-          }
-
-          Text("Your menu-bar control room for busy dev ports, daemon squatters, and quick process cleanup.")
-            .font(.system(size: 13, weight: .medium, design: .rounded))
-            .foregroundStyle(PortwhorePalette.textSecondary)
-            .fixedSize(horizontal: false, vertical: true)
-        }
-
-        Spacer(minLength: 12)
-
-        VStack(alignment: .trailing, spacing: 8) {
-          statusPill(title: "\(store.records.count) listeners", tone: .mine)
-          statusPill(title: "\(store.killableCount) yours", tone: .mine)
-          statusPill(title: "\(store.protectedCount) protected", tone: .protected)
-        }
-      }
-
-      Divider()
-        .overlay(Color.white.opacity(0.12))
-
+  private var headerBar: some View {
+    VStack(alignment: .leading, spacing: 10) {
       HStack(spacing: 10) {
-        Button {
-          Task {
-            await store.refreshNow()
-          }
-        } label: {
-          Label(store.isRefreshing ? "Refreshing…" : "Refresh Scan", systemImage: "arrow.clockwise")
-        }
-        .buttonStyle(.borderedProminent)
-        .tint(PortwhorePalette.action)
-        .disabled(store.isRefreshing)
+        Image(systemName: "network")
+          .font(.system(size: 18, weight: .semibold))
+          .foregroundStyle(PortwhorePalette.action)
 
-        if let lastActionMessage = store.lastActionMessage {
-          Text(lastActionMessage)
-            .font(.system(size: 12, weight: .semibold, design: .rounded))
-            .foregroundStyle(PortwhorePalette.free)
-            .lineLimit(2)
-        } else {
-          Text("Updated \(DateFormatting.relativeString(for: store.lastUpdated))")
-            .font(.system(size: 12, weight: .semibold, design: .rounded))
-            .foregroundStyle(PortwhorePalette.textSecondary)
-        }
-      }
-
-      if let lastError = store.lastError {
-        Text(lastError)
-          .font(.system(size: 11, weight: .medium, design: .rounded))
-          .foregroundStyle(PortwhorePalette.warning)
-          .padding(12)
-          .frame(maxWidth: .infinity, alignment: .leading)
-          .background(PortwhorePalette.warningDeep.opacity(0.72), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-      }
-    }
-    .padding(18)
-    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-    .overlay(
-      RoundedRectangle(cornerRadius: 28, style: .continuous)
-        .stroke(Color.white.opacity(0.10), lineWidth: 1)
-    )
-    .shadow(color: Color.black.opacity(0.30), radius: 18, y: 12)
-  }
-
-  private var footerCard: some View {
-    HStack(spacing: 12) {
-      VStack(alignment: .leading, spacing: 6) {
-        Text("Tips")
-          .font(.system(size: 13, weight: .bold, design: .rounded))
+        Text("Portwhore")
+          .font(.system(size: 20, weight: .black, design: .monospaced))
           .foregroundStyle(.white)
 
-        Text("Use Stop for a clean `TERM`, or the overflow menu when a stubborn port needs a harder shove.")
-          .font(.system(size: 12, weight: .medium, design: .rounded))
-          .foregroundStyle(PortwhorePalette.textSecondary)
+        Spacer()
+
+        Button {
+          Task { await store.refreshNow() }
+        } label: {
+          Image(systemName: "arrow.clockwise")
+            .font(.system(size: 12, weight: .semibold))
+            .foregroundStyle(PortwhorePalette.textSecondary)
+            .symbolEffect(.rotate, isActive: store.isRefreshing)
+        }
+        .buttonStyle(.plain)
+        .frame(width: 26, height: 26)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .contentShape(Rectangle())
+        .help("Refresh")
+
+        Button {
+          NSApplication.shared.terminate(nil)
+        } label: {
+          Image(systemName: "power")
+            .font(.system(size: 11, weight: .semibold))
+            .foregroundStyle(PortwhorePalette.textMuted)
+        }
+        .buttonStyle(.plain)
+        .frame(width: 26, height: 26)
+        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+        .contentShape(Rectangle())
+        .help("Quit Portwhore")
       }
 
-      Spacer(minLength: 12)
-
-      Button("Quit") {
-        NSApplication.shared.terminate(nil)
-      }
-      .buttonStyle(.bordered)
-      .controlSize(.large)
+      statsLine
     }
-    .padding(18)
-    .background(Color.white.opacity(0.05), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+    .padding(14)
+    .background(PortwhorePalette.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     .overlay(
-      RoundedRectangle(cornerRadius: 24, style: .continuous)
-        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+      RoundedRectangle(cornerRadius: 14, style: .continuous)
+        .stroke(PortwhorePalette.cardStroke, lineWidth: 1)
     )
   }
 
+  private var statsLine: some View {
+    HStack(spacing: 4) {
+      Text(verbatim: "\(store.records.count)")
+        .fontWeight(.bold)
+        .foregroundStyle(PortwhorePalette.action)
+      Text("listening")
+        .foregroundStyle(PortwhorePalette.textMuted)
+      Text("·")
+        .foregroundStyle(PortwhorePalette.textMuted.opacity(0.5))
+        .padding(.horizontal, 2)
+      Text(verbatim: "\(store.killableCount)")
+        .fontWeight(.bold)
+        .foregroundStyle(PortwhorePalette.action)
+      Text("yours")
+        .foregroundStyle(PortwhorePalette.textMuted)
+      Text("·")
+        .foregroundStyle(PortwhorePalette.textMuted.opacity(0.5))
+        .padding(.horizontal, 2)
+      Text(verbatim: "\(store.protectedCount)")
+        .fontWeight(.bold)
+        .foregroundStyle(PortwhorePalette.warning)
+      Text("protected")
+        .foregroundStyle(PortwhorePalette.textMuted)
+    }
+    .font(.system(size: 11, weight: .medium, design: .monospaced))
+  }
+
+  // MARK: - Banners
+
+  private func actionBanner(_ message: String) -> some View {
+    HStack(spacing: 8) {
+      Image(systemName: "checkmark.circle.fill")
+        .foregroundStyle(PortwhorePalette.action)
+      Text(message)
+        .font(.system(size: 12, weight: .medium, design: .rounded))
+        .foregroundStyle(.white)
+        .lineLimit(2)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(PortwhorePalette.actionDeep, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    .overlay(
+      RoundedRectangle(cornerRadius: 10, style: .continuous)
+        .stroke(PortwhorePalette.action.opacity(0.2), lineWidth: 1)
+    )
+  }
+
+  private func errorBanner(_ message: String) -> some View {
+    HStack(spacing: 8) {
+      Image(systemName: "exclamationmark.triangle.fill")
+        .foregroundStyle(PortwhorePalette.warning)
+      Text(message)
+        .font(.system(size: 12, weight: .medium, design: .rounded))
+        .foregroundStyle(.white)
+        .lineLimit(2)
+    }
+    .padding(.horizontal, 14)
+    .padding(.vertical, 10)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(PortwhorePalette.warningDeep, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+    .overlay(
+      RoundedRectangle(cornerRadius: 10, style: .continuous)
+        .stroke(PortwhorePalette.warning.opacity(0.2), lineWidth: 1)
+    )
+  }
+
+  // MARK: - Section Card
+
   private func sectionCard<Content: View>(title: String, subtitle: String, @ViewBuilder content: () -> Content) -> some View {
-    VStack(alignment: .leading, spacing: 12) {
-      HStack(alignment: .firstTextBaseline) {
+    VStack(alignment: .leading, spacing: 10) {
+      HStack(alignment: .firstTextBaseline, spacing: 8) {
         Text(title)
-          .font(.system(size: 19, weight: .bold, design: .rounded))
+          .font(.system(size: 14, weight: .bold, design: .monospaced))
           .foregroundStyle(.white)
 
         Text(subtitle)
-          .font(.system(size: 12, weight: .semibold, design: .rounded))
-          .foregroundStyle(PortwhorePalette.textSecondary)
+          .font(.system(size: 11, weight: .medium, design: .monospaced))
+          .foregroundStyle(PortwhorePalette.textMuted)
       }
 
       content()
     }
-    .padding(16)
-    .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+    .padding(12)
+    .background(PortwhorePalette.card.opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     .overlay(
-      RoundedRectangle(cornerRadius: 26, style: .continuous)
-        .stroke(Color.white.opacity(0.08), lineWidth: 1)
+      RoundedRectangle(cornerRadius: 14, style: .continuous)
+        .stroke(PortwhorePalette.cardStroke, lineWidth: 1)
     )
-  }
-
-  private func statusPill(title: String, tone: PortOwnershipTone) -> some View {
-    Text(title)
-      .font(.system(size: 12, weight: .bold, design: .rounded))
-      .foregroundStyle(pillForeground(for: tone))
-      .padding(.horizontal, 12)
-      .padding(.vertical, 8)
-      .background(pillBackground(for: tone), in: Capsule())
-  }
-
-  private func pillBackground(for tone: PortOwnershipTone) -> Color {
-    switch tone {
-    case .mine:
-      return PortwhorePalette.actionDeep
-    case .shared:
-      return Color.orange.opacity(0.16)
-    case .protected:
-      return PortwhorePalette.warningDeep
-    case .free:
-      return Color.white.opacity(0.12)
-    }
-  }
-
-  private func pillForeground(for tone: PortOwnershipTone) -> Color {
-    switch tone {
-    case .mine:
-      return PortwhorePalette.action
-    case .shared:
-      return Color.orange
-    case .protected:
-      return PortwhorePalette.warning
-    case .free:
-      return .white
-    }
   }
 }
