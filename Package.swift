@@ -16,6 +16,10 @@ let package = Package(
   targets: [
     .executableTarget(
       name: "Portwhore"
+    ),
+    .testTarget(
+      name: "PortwhoreTests",
+      dependencies: ["Portwhore"]
     )
   ]
 )

@@ -11,9 +11,9 @@ enum PortwhoreDefaults {
       guard let stored = UserDefaults.standard.array(forKey: watchedPortsKey) as? [Int] else {
         return defaultWatchedPorts
       }
-      return stored
+      return PortValidation.sanitizedPorts(stored)
     }
-    set { UserDefaults.standard.set(newValue, forKey: watchedPortsKey) }
+    set { UserDefaults.standard.set(PortValidation.sanitizedPorts(newValue), forKey: watchedPortsKey) }
   }
 
   static var portLabels: [Int: String] {
@@ -23,8 +23,10 @@ enum PortwhoreDefaults {
       }
       var result: [Int: String] = [:]
       for (key, value) in stored {
-        if let port = Int(key) {
-          result[port] = value
+        if let port = Int(key),
+           PortValidation.isValidPort(port),
+           let label = PortValidation.sanitizedLabel(value) {
+          result[port] = label
         }
       }
       return result
@@ -32,7 +34,11 @@ enum PortwhoreDefaults {
     set {
       var stringKeyed: [String: String] = [:]
       for (key, value) in newValue {
-        stringKeyed[String(key)] = value
+        guard PortValidation.isValidPort(key),
+              let label = PortValidation.sanitizedLabel(value) else {
+          continue
+        }
+        stringKeyed[String(key)] = label
       }
       UserDefaults.standard.set(stringKeyed, forKey: portLabelsKey)
     }
@@ -41,9 +47,9 @@ enum PortwhoreDefaults {
   static var refreshInterval: TimeInterval {
     get {
       let stored = UserDefaults.standard.double(forKey: refreshIntervalKey)
-      return stored > 0 ? stored : 5.0
+      return PortValidation.normalizedRefreshInterval(stored)
     }
-    set { UserDefaults.standard.set(newValue, forKey: refreshIntervalKey) }
+    set { UserDefaults.standard.set(PortValidation.normalizedRefreshInterval(newValue), forKey: refreshIntervalKey) }
   }
 
   static func resetToDefaults() {

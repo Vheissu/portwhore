@@ -60,11 +60,64 @@ struct PortScanner: Sendable {
     }
 
     return lines.dropFirst().compactMap { line in
-      parse(line: String(line), transport: transport)
+      PortScannerParsing.parse(line: String(line), transport: transport)
     }
   }
 
-  private func parse(line: String, transport: NetworkTransport) -> RawPortListener? {
+  private func deduplicate(_ listeners: [RawPortListener]) -> [RawPortListener] {
+    var seen = Set<String>()
+    var unique: [RawPortListener] = []
+
+    for listener in listeners {
+      let key = "\(listener.transport.rawValue)-\(listener.port)-\(listener.pid)"
+      if seen.insert(key).inserted {
+        unique.append(listener)
+      }
+    }
+
+    return unique
+  }
+
+  private func lookupCommands(for pids: Set<Int>) throws -> [Int: String] {
+    guard !pids.isEmpty else {
+      return [:]
+    }
+
+    let pidList = pids.sorted().map(String.init).joined(separator: ",")
+    let output: String
+    do {
+      output = try CommandRunner.run(
+        executable: "/bin/ps",
+        arguments: ["-o", "pid=", "-o", "command=", "-p", pidList]
+      )
+    } catch let CommandRunnerError.failed(status, _) where status == 1 {
+      return [:]
+    }
+
+    var commandsByPID: [Int: String] = [:]
+
+    for line in output.split(separator: "\n", omittingEmptySubsequences: true) {
+      let trimmed = line.trimmingCharacters(in: .whitespaces)
+      let columns = trimmed.split(
+        maxSplits: 1,
+        omittingEmptySubsequences: true,
+        whereSeparator: \.isWhitespace
+      )
+
+      guard let pidText = columns.first, let pid = Int(pidText) else {
+        continue
+      }
+
+      let command = columns.count > 1 ? String(columns[1]) : ""
+      commandsByPID[pid] = command
+    }
+
+    return commandsByPID
+  }
+}
+
+enum PortScannerParsing {
+  static func parse(line: String, transport: NetworkTransport) -> RawPortListener? {
     let columns = line.split(
       maxSplits: 8,
       omittingEmptySubsequences: true,
@@ -89,19 +142,19 @@ struct PortScanner: Sendable {
       processName: processName,
       user: user,
       transport: transport,
-      endpoint: Self.cleanEndpoint(endpoint),
-      state: Self.extractState(from: endpoint)
+      endpoint: cleanEndpoint(endpoint),
+      state: extractState(from: endpoint)
     )
   }
 
-  private static func cleanEndpoint(_ endpoint: String) -> String {
+  static func cleanEndpoint(_ endpoint: String) -> String {
     if let range = endpoint.range(of: " (") {
       return String(endpoint[..<range.lowerBound])
     }
     return endpoint
   }
 
-  private static func extractPort(from endpoint: String) -> Int? {
+  static func extractPort(from endpoint: String) -> Int? {
     let trimmed = cleanEndpoint(endpoint)
     guard let range = trimmed.range(of: #":(\d+)$"#, options: .regularExpression) else {
       return nil
@@ -111,7 +164,7 @@ struct PortScanner: Sendable {
     return Int(value)
   }
 
-  private static func extractState(from endpoint: String) -> String? {
+  static func extractState(from endpoint: String) -> String? {
     guard let range = endpoint.range(of: #"\(([^)]+)\)"#, options: .regularExpression) else {
       return nil
     }
@@ -119,55 +172,9 @@ struct PortScanner: Sendable {
     return String(endpoint[range])
       .trimmingCharacters(in: CharacterSet(charactersIn: "()"))
   }
-
-  private func deduplicate(_ listeners: [RawPortListener]) -> [RawPortListener] {
-    var seen = Set<String>()
-    var unique: [RawPortListener] = []
-
-    for listener in listeners {
-      let key = "\(listener.transport.rawValue)-\(listener.port)-\(listener.pid)"
-      if seen.insert(key).inserted {
-        unique.append(listener)
-      }
-    }
-
-    return unique
-  }
-
-  private func lookupCommands(for pids: Set<Int>) throws -> [Int: String] {
-    guard !pids.isEmpty else {
-      return [:]
-    }
-
-    let pidList = pids.sorted().map(String.init).joined(separator: ",")
-    let output = try CommandRunner.run(
-      executable: "/bin/ps",
-      arguments: ["-o", "pid=", "-o", "command=", "-p", pidList]
-    )
-
-    var commandsByPID: [Int: String] = [:]
-
-    for line in output.split(separator: "\n", omittingEmptySubsequences: true) {
-      let trimmed = line.trimmingCharacters(in: .whitespaces)
-      let columns = trimmed.split(
-        maxSplits: 1,
-        omittingEmptySubsequences: true,
-        whereSeparator: \.isWhitespace
-      )
-
-      guard let pidText = columns.first, let pid = Int(pidText) else {
-        continue
-      }
-
-      let command = columns.count > 1 ? String(columns[1]) : ""
-      commandsByPID[pid] = command
-    }
-
-    return commandsByPID
-  }
 }
 
-private struct RawPortListener: Hashable, Sendable {
+struct RawPortListener: Hashable, Sendable {
   let port: Int
   let pid: Int
   let processName: String

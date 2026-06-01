@@ -42,8 +42,9 @@ final class PortDashboardStore {
   // MARK: - Computed: slots & records
 
   var watchedSlots: [WatchedPortSlot] {
-    watchedPorts.map { port in
-      WatchedPortSlot(port: port, record: records.first(where: { $0.port == port }))
+    let recordsByPort = Dictionary(records.map { ($0.port, $0) }, uniquingKeysWith: { first, _ in first })
+    return watchedPorts.map { port in
+      WatchedPortSlot(port: port, record: recordsByPort[port])
     }
   }
 
@@ -57,6 +58,10 @@ final class PortDashboardStore {
 
   var killableCount: Int {
     records.filter { $0.listeners.allSatisfy(\.isOwnedByCurrentUser) }.count
+  }
+
+  var killableProcessCount: Int {
+    Set(myRecords.flatMap(\.uniquePIDs)).count
   }
 
   var protectedCount: Int {
@@ -165,7 +170,7 @@ final class PortDashboardStore {
   // MARK: - Watched port management
 
   func addWatchedPort(_ port: Int) {
-    guard !watchedPorts.contains(port) else { return }
+    guard PortValidation.isValidPort(port), !watchedPorts.contains(port) else { return }
     watchedPorts.append(port)
     watchedPorts.sort()
     PortwhoreDefaults.watchedPorts = watchedPorts
@@ -187,7 +192,11 @@ final class PortDashboardStore {
   // MARK: - Labels
 
   func setPortLabel(_ port: Int, label: String?) {
-    if let label, !label.isEmpty {
+    guard PortValidation.isValidPort(port) else {
+      return
+    }
+
+    if let label = PortValidation.sanitizedLabel(label) {
       portLabels[port] = label
     } else {
       portLabels.removeValue(forKey: port)
@@ -198,7 +207,7 @@ final class PortDashboardStore {
   // MARK: - Refresh interval
 
   func setRefreshInterval(_ interval: TimeInterval) {
-    refreshInterval = interval
+    refreshInterval = PortValidation.normalizedRefreshInterval(interval)
     PortwhoreDefaults.refreshInterval = interval
     restartRefreshLoop()
   }
@@ -275,22 +284,21 @@ final class PortDashboardStore {
     let targets = myRecords
     guard !targets.isEmpty else { return }
 
-    var totalKilled = 0
-    var allFailures: [String] = []
-
-    for record in targets {
-      do {
-        let processController = self.processController
-        let result = try await Task.detached(priority: .userInitiated) {
-          try processController.freePort(record, force: false)
-        }.value
-        totalKilled += result.killedPIDs.count
-        allFailures.append(contentsOf: result.failures)
-      } catch {
-        allFailures.append("Port \(record.port): \(error.localizedDescription)")
-      }
+    let targetPIDs = targets.flatMap(\.uniquePIDs)
+    let processController = self.processController
+    let result: ProcessActionResult
+    do {
+      result = try await Task.detached(priority: .userInitiated) {
+        try processController.terminate(pids: targetPIDs, force: false)
+      }.value
+    } catch {
+      lastError = error.localizedDescription
+      notifyStatusChange()
+      return
     }
 
+    let totalKilled = result.killedPIDs.count
+    let allFailures = result.failures
     if allFailures.isEmpty {
       lastActionMessage = "Stopped \(totalKilled) process\(totalKilled == 1 ? "" : "es") across \(targets.count) port(s)."
     } else {
@@ -304,7 +312,11 @@ final class PortDashboardStore {
   private func refreshLoop() async {
     await refreshNow()
     while !Task.isCancelled {
-      try? await Task.sleep(for: .seconds(refreshInterval))
+      do {
+        try await Task.sleep(for: .seconds(refreshInterval))
+      } catch {
+        break
+      }
       await refreshNow()
     }
   }

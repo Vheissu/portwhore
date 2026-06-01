@@ -1,17 +1,45 @@
 import SwiftUI
 
+/// Semantic palette. Surfaces and text use system colors so the app adapts to
+/// Light / Dark / Increase Contrast and respects the user's accent color.
+/// Color is reserved for *meaning* (port ownership), not decoration.
 enum PortwhorePalette {
-  static let background = Color(red: 0.04, green: 0.04, blue: 0.07)
-  static let card = Color(red: 0.07, green: 0.07, blue: 0.11)
-  static let cardRaised = Color(red: 0.09, green: 0.09, blue: 0.14)
-  static let cardStroke = Color.white.opacity(0.06)
-  static let textSecondary = Color(red: 0.55, green: 0.58, blue: 0.68)
-  static let textMuted = Color(red: 0.36, green: 0.38, blue: 0.48)
-  static let action = Color(red: 0.0, green: 0.85, blue: 1.0)
-  static let actionDeep = Color(red: 0.0, green: 0.18, blue: 0.24)
-  static let warning = Color(red: 1.0, green: 0.0, blue: 0.50)
-  static let warningDeep = Color(red: 0.24, green: 0.0, blue: 0.12)
-  static let amber = Color(red: 1.0, green: 0.75, blue: 0.0)
-  static let amberDeep = Color(red: 0.24, green: 0.18, blue: 0.0)
-  static let free = Color(red: 0.45, green: 0.75, blue: 0.85)
+  // MARK: Surfaces
+
+  static let background = Color(nsColor: .windowBackgroundColor)
+  static let surface = Color(nsColor: .controlBackgroundColor)
+  static let separator = Color(nsColor: .separatorColor)
+
+  // MARK: Text
+
+  static let textSecondary = Color.secondary
+  static let textMuted = Color(nsColor: .tertiaryLabelColor)
+
+  // MARK: Interactive — follows System Settings → Appearance accent
+
+  static let accent = Color.accentColor
+
+  // MARK: Ownership semantics
+  //
+  // green  → every listener is yours, safe to stop
+  // orange → shared with another user
+  // red    → owned by root / protected
+  // muted  → free
+
+  static let mine = Color.green
+  static let shared = Color.orange
+  static let protected = Color.red
+  static let free = Color.secondary
+}
+
+extension PortOwnershipTone {
+  /// The semantic color that represents this ownership state.
+  var color: Color {
+    switch self {
+    case .mine: return PortwhorePalette.mine
+    case .shared: return PortwhorePalette.shared
+    case .protected: return PortwhorePalette.protected
+    case .free: return PortwhorePalette.free
+    }
+  }
 }

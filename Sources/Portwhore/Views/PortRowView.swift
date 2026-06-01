@@ -23,41 +23,37 @@ struct ActivePortRowView: View {
 
   private var label: String? { store.portLabels[record.port] }
   private var wellKnown: String? { WellKnownPorts.description(for: record.port) }
+  private var tone: PortOwnershipTone { record.ownershipTone }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
       HStack(alignment: .center, spacing: 10) {
-        portBadge
+        PortBadge(port: record.port, tone: tone)
 
         VStack(alignment: .leading, spacing: 2) {
           HStack(spacing: 6) {
             Text(record.displayTitle)
-              .font(.system(size: 14, weight: .semibold, design: .monospaced))
-              .foregroundStyle(.white)
+              .font(.system(size: 13, weight: .semibold))
+              .foregroundStyle(.primary)
               .lineLimit(1)
 
-            Text(record.transportLabel)
-              .font(.system(size: 9, weight: .bold, design: .monospaced))
-              .foregroundStyle(PortwhorePalette.textMuted)
-              .padding(.horizontal, 5)
-              .padding(.vertical, 2)
-              .background(Color.white.opacity(0.06), in: Capsule())
+            TransportTag(text: record.transportLabel)
           }
 
           if let label {
             Text(label)
-              .font(.system(size: 10, weight: .medium))
-              .foregroundStyle(PortwhorePalette.action.opacity(0.7))
+              .font(.system(size: 11, weight: .medium))
+              .foregroundStyle(tone.color)
               .lineLimit(1)
           } else if let wellKnown {
             Text(wellKnown)
-              .font(.system(size: 10, weight: .medium))
-              .foregroundStyle(PortwhorePalette.textMuted.opacity(0.7))
+              .font(.system(size: 11))
+              .foregroundStyle(PortwhorePalette.textSecondary)
               .lineLimit(1)
           }
 
           Text(record.subtitle)
-            .font(.system(size: 11, weight: .medium, design: .monospaced))
+            .font(.system(size: 11, design: .monospaced))
             .foregroundStyle(PortwhorePalette.textSecondary)
             .lineLimit(1)
         }
@@ -67,17 +63,17 @@ struct ActivePortRowView: View {
         Button(record.primaryActionTitle) {
           store.freePort(record, force: false)
         }
-        .buttonStyle(ActionPillButtonStyle(tone: record.ownershipTone))
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .tint(tone.color)
 
         portMenu
       }
 
-      // Inline label editor
       if store.editingLabelForPort == record.port {
         labelEditor
       }
 
-      // Multiple listeners detail
       if record.hasMultipleListeners {
         VStack(alignment: .leading, spacing: 4) {
           ForEach(record.listeners.dropFirst()) { listener in
@@ -87,17 +83,17 @@ struct ActivePortRowView: View {
                 .frame(width: 3, height: 3)
 
               Text("\(listener.processName) · PID \(listener.pid)")
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(PortwhorePalette.textSecondary)
 
               Text(listener.transport.rawValue)
-                .font(.system(size: 8, weight: .bold, design: .monospaced))
-                .foregroundStyle(PortwhorePalette.textMuted.opacity(0.7))
+                .font(.system(size: 9, weight: .medium, design: .monospaced))
+                .foregroundStyle(PortwhorePalette.textMuted)
 
               Spacer(minLength: 4)
 
               Text(listener.user)
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .font(.system(size: 10, design: .monospaced))
                 .foregroundStyle(PortwhorePalette.textMuted)
             }
           }
@@ -105,18 +101,17 @@ struct ActivePortRowView: View {
         .padding(.leading, 52)
       }
 
-      // Endpoint info
       Text(record.primary.endpoint)
-        .font(.system(size: 9, weight: .medium, design: .monospaced))
-        .foregroundStyle(PortwhorePalette.textMuted.opacity(0.5))
+        .font(.system(size: 10, design: .monospaced))
+        .foregroundStyle(PortwhorePalette.textMuted)
         .lineLimit(1)
         .padding(.leading, 52)
     }
-    .padding(12)
-    .background(rowBackground, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    .padding(10)
+    .background(rowBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     .overlay(
-      RoundedRectangle(cornerRadius: 12, style: .continuous)
-        .stroke(borderColor, lineWidth: 1)
+      RoundedRectangle(cornerRadius: 10, style: .continuous)
+        .stroke(tone == .free ? PortwhorePalette.separator : tone.color.opacity(0.25), lineWidth: 1)
     )
   }
 
@@ -125,7 +120,7 @@ struct ActivePortRowView: View {
   private var portMenu: some View {
     Menu {
       if label != nil {
-        Button("Edit Label...") {
+        Button("Edit Label…") {
           store.editingLabelText = label ?? ""
           store.editingLabelForPort = record.port
         }
@@ -133,7 +128,7 @@ struct ActivePortRowView: View {
           store.setPortLabel(record.port, label: nil)
         }
       } else {
-        Button("Set Label...") {
+        Button("Set Label…") {
           store.editingLabelText = ""
           store.editingLabelForPort = record.port
         }
@@ -144,20 +139,16 @@ struct ActivePortRowView: View {
       Button("Copy Port") {
         Pasteboard.copy(String(record.port))
       }
-
       Button("Copy PID") {
         Pasteboard.copy(record.uniquePIDs.map(String.init).joined(separator: ", "))
       }
-
       Button("Copy Command") {
         let commands = record.listeners.map(\.trimmedCommand).joined(separator: "\n")
         Pasteboard.copy(commands)
       }
-
       Button("Copy Endpoint") {
         Pasteboard.copy(record.primary.endpoint)
       }
-
       Button("Copy Kill Command") {
         let pids = record.uniquePIDs.map(String.init).joined(separator: " ")
         let needsSudo = !record.listeners.allSatisfy(\.isOwnedByCurrentUser)
@@ -175,18 +166,16 @@ struct ActivePortRowView: View {
 
       Divider()
 
-      Button("Force Kill") {
+      Button("Force Kill", role: .destructive) {
         store.freePort(record, force: true)
       }
     } label: {
       Image(systemName: "ellipsis")
-        .font(.system(size: 14, weight: .medium))
-        .foregroundStyle(PortwhorePalette.textMuted)
-        .frame(width: 24, height: 24)
-        .contentShape(Rectangle())
+        .foregroundStyle(PortwhorePalette.textSecondary)
     }
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
+    .fixedSize()
   }
 
   // MARK: - Label Editor
@@ -194,107 +183,73 @@ struct ActivePortRowView: View {
   private var labelEditor: some View {
     HStack(spacing: 8) {
       Image(systemName: "tag")
-        .font(.system(size: 10, weight: .semibold))
-        .foregroundStyle(PortwhorePalette.action)
+        .font(.system(size: 11))
+        .foregroundStyle(PortwhorePalette.accent)
 
-      TextField("Label this port...", text: $store.editingLabelText)
+      TextField("Label this port", text: $store.editingLabelText)
         .textFieldStyle(.plain)
-        .font(.system(size: 11, weight: .medium, design: .monospaced))
-        .foregroundStyle(.white)
+        .font(.system(size: 12))
         .onSubmit {
           store.setPortLabel(record.port, label: store.editingLabelText)
           store.editingLabelForPort = nil
         }
 
-      Button {
+      Button("Save") {
         store.setPortLabel(record.port, label: store.editingLabelText)
         store.editingLabelForPort = nil
-      } label: {
-        Text("Save")
-          .font(.system(size: 10, weight: .bold, design: .monospaced))
-          .foregroundStyle(PortwhorePalette.action)
       }
-      .buttonStyle(.plain)
+      .controlSize(.small)
+      .buttonStyle(.borderedProminent)
 
-      Button {
+      Button("Cancel") {
         store.editingLabelForPort = nil
-      } label: {
-        Text("Cancel")
-          .font(.system(size: 10, weight: .medium, design: .monospaced))
-          .foregroundStyle(PortwhorePalette.textMuted)
       }
-      .buttonStyle(.plain)
+      .controlSize(.small)
+      .buttonStyle(.bordered)
     }
     .padding(8)
-    .background(PortwhorePalette.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-    .overlay(
-      RoundedRectangle(cornerRadius: 8, style: .continuous)
-        .stroke(PortwhorePalette.action.opacity(0.3), lineWidth: 1)
-    )
+    .background(PortwhorePalette.surface, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
   }
 
   // MARK: - Styling
 
-  private var portBadge: some View {
-    Text(verbatim: "\(record.port)")
-      .font(.system(size: 18, weight: .black, design: .monospaced))
-      .foregroundStyle(badgeTextColor)
-      .frame(minWidth: 48)
-      .padding(.horizontal, 8)
-      .padding(.vertical, 5)
-      .background(badgeBackground, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-  }
-
   private var rowBackground: Color {
-    switch record.ownershipTone {
-    case .mine:
-      return Color(red: 0.02, green: 0.09, blue: 0.12)
-    case .shared:
-      return Color(red: 0.12, green: 0.10, blue: 0.03)
-    case .protected:
-      return Color(red: 0.14, green: 0.03, blue: 0.08)
-    case .free:
-      return PortwhorePalette.card
-    }
+    tone == .free ? PortwhorePalette.surface.opacity(0.5) : tone.color.opacity(0.08)
   }
+}
 
-  private var borderColor: Color {
-    switch record.ownershipTone {
-    case .mine:
-      return PortwhorePalette.action.opacity(0.20)
-    case .shared:
-      return PortwhorePalette.amber.opacity(0.20)
-    case .protected:
-      return PortwhorePalette.warning.opacity(0.25)
-    case .free:
-      return PortwhorePalette.cardStroke
-    }
+// MARK: - Port Badge
+
+struct PortBadge: View {
+  let port: Int
+  let tone: PortOwnershipTone
+
+  var body: some View {
+    Text(verbatim: "\(port)")
+      .font(.system(size: 15, weight: .semibold, design: .monospaced))
+      .foregroundStyle(tone == .free ? PortwhorePalette.textMuted : tone.color)
+      .frame(minWidth: 46)
+      .padding(.horizontal, 8)
+      .padding(.vertical, 6)
+      .background(
+        (tone == .free ? PortwhorePalette.free.opacity(0.10) : tone.color.opacity(0.15)),
+        in: RoundedRectangle(cornerRadius: 7, style: .continuous)
+      )
   }
+}
 
-  private var badgeBackground: Color {
-    switch record.ownershipTone {
-    case .mine:
-      return PortwhorePalette.actionDeep
-    case .shared:
-      return PortwhorePalette.amberDeep
-    case .protected:
-      return PortwhorePalette.warningDeep
-    case .free:
-      return Color.white.opacity(0.06)
-    }
-  }
+// MARK: - Transport Tag
 
-  private var badgeTextColor: Color {
-    switch record.ownershipTone {
-    case .mine:
-      return PortwhorePalette.action
-    case .shared:
-      return PortwhorePalette.amber
-    case .protected:
-      return PortwhorePalette.warning
-    case .free:
-      return PortwhorePalette.free
-    }
+struct TransportTag: View {
+  let text: String
+
+  var body: some View {
+    Text(text)
+      .font(.system(size: 9, weight: .semibold, design: .monospaced))
+      .foregroundStyle(PortwhorePalette.textSecondary)
+      .padding(.horizontal, 5)
+      .padding(.vertical, 2)
+      .background(PortwhorePalette.surface, in: Capsule())
   }
 }
 
@@ -306,28 +261,22 @@ struct FreePortRowView: View {
 
   var body: some View {
     HStack(spacing: 10) {
-      Text(verbatim: "\(port)")
-        .font(.system(size: 18, weight: .black, design: .monospaced))
-        .foregroundStyle(PortwhorePalette.free.opacity(0.5))
-        .frame(minWidth: 48)
-        .padding(.horizontal, 8)
-        .padding(.vertical, 5)
-        .background(Color.white.opacity(0.03), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+      PortBadge(port: port, tone: .free)
 
       VStack(alignment: .leading, spacing: 2) {
         Text("Free")
-          .font(.system(size: 13, weight: .medium, design: .monospaced))
-          .foregroundStyle(PortwhorePalette.textMuted)
+          .font(.system(size: 13, weight: .medium))
+          .foregroundStyle(PortwhorePalette.textSecondary)
 
         if let label {
           Text(label)
-            .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(PortwhorePalette.free.opacity(0.5))
+            .font(.system(size: 11, weight: .medium))
+            .foregroundStyle(PortwhorePalette.textMuted)
             .lineLimit(1)
         } else if let wellKnown = WellKnownPorts.description(for: port) {
           Text(wellKnown)
-            .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(PortwhorePalette.textMuted.opacity(0.5))
+            .font(.system(size: 11))
+            .foregroundStyle(PortwhorePalette.textMuted)
             .lineLimit(1)
         }
       }
@@ -335,57 +284,14 @@ struct FreePortRowView: View {
       Spacer()
 
       Image(systemName: "checkmark.circle")
-        .font(.system(size: 15, weight: .medium))
-        .foregroundStyle(PortwhorePalette.action.opacity(0.3))
+        .font(.system(size: 14))
+        .foregroundStyle(PortwhorePalette.mine.opacity(0.5))
     }
-    .padding(12)
-    .background(PortwhorePalette.card.opacity(0.4), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    .padding(10)
+    .background(PortwhorePalette.surface.opacity(0.4), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
     .overlay(
-      RoundedRectangle(cornerRadius: 12, style: .continuous)
-        .stroke(Color.white.opacity(0.03), lineWidth: 1)
+      RoundedRectangle(cornerRadius: 10, style: .continuous)
+        .stroke(PortwhorePalette.separator, lineWidth: 1)
     )
-  }
-}
-
-// MARK: - Action Pill Button
-
-struct ActionPillButtonStyle: ButtonStyle {
-  let tone: PortOwnershipTone
-
-  func makeBody(configuration: Configuration) -> some View {
-    configuration.label
-      .font(.system(size: 11, weight: .bold, design: .monospaced))
-      .foregroundStyle(foregroundColor)
-      .padding(.horizontal, 12)
-      .padding(.vertical, 6)
-      .background(backgroundColor.opacity(configuration.isPressed ? 0.75 : 1), in: Capsule())
-      .scaleEffect(configuration.isPressed ? 0.96 : 1)
-      .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
-  }
-
-  private var backgroundColor: Color {
-    switch tone {
-    case .mine:
-      return PortwhorePalette.action
-    case .shared:
-      return PortwhorePalette.amber
-    case .protected:
-      return PortwhorePalette.warning
-    case .free:
-      return Color.white.opacity(0.10)
-    }
-  }
-
-  private var foregroundColor: Color {
-    switch tone {
-    case .mine:
-      return Color.black
-    case .shared:
-      return Color.black
-    case .protected:
-      return Color.white
-    case .free:
-      return .white
-    }
   }
 }

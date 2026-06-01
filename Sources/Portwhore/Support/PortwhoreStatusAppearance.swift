@@ -12,12 +12,17 @@ struct PortwhoreStatusSnapshot: Sendable {
   let accessibilityLabel: String
 }
 
+/// The menu-bar glyph: a lipstick kiss. Deliberately cheeky — it's the brand.
+/// Drawn in color (not a template image) so the joke survives in light and dark
+/// menu bars. Lit and saturated when ports are active, a muted dusty rose when idle.
 enum PortwhoreStatusImage {
-  private static let lipsRed = NSColor(red: 0.93, green: 0.11, blue: 0.22, alpha: 1.0)
-  private static let lipsOutline = NSColor(red: 0.45, green: 0.0, blue: 0.08, alpha: 1.0)
-  private static let lipsDim = NSColor(red: 0.6, green: 0.15, blue: 0.22, alpha: 0.75)
-  private static let lipsDimOutline = NSColor(red: 0.3, green: 0.05, blue: 0.1, alpha: 0.75)
-  private static let lipsHighlight = NSColor(red: 1.0, green: 0.55, blue: 0.6, alpha: 0.7)
+  // Active: a classic lipstick red — rich, not fire-engine neon.
+  private static let lipsActive = NSColor(red: 0.85, green: 0.11, blue: 0.23, alpha: 1.0)
+  private static let seamActive = NSColor(red: 0.48, green: 0.03, blue: 0.12, alpha: 1.0)
+  // Idle: desaturated, slightly transparent — clearly "asleep".
+  private static let lipsIdle = NSColor(red: 0.52, green: 0.34, blue: 0.39, alpha: 0.82)
+  private static let seamIdle = NSColor(red: 0.32, green: 0.18, blue: 0.22, alpha: 0.82)
+  private static let shine = NSColor.white.withAlphaComponent(0.22)
 
   static func make(tone: PortwhoreStatusTone) -> NSImage {
     let size = NSSize(width: 22, height: 18)
@@ -25,124 +30,74 @@ enum PortwhoreStatusImage {
       NSColor.clear.setFill()
       rect.fill()
 
-      let fill: NSColor
-      let stroke: NSColor
-      switch tone {
-      case .idle:
-        fill = lipsDim
-        stroke = lipsDimOutline
-      case .active, .warning:
-        fill = lipsRed
-        stroke = lipsOutline
-      }
+      let isLit = tone != .idle
+      let lips = isLit ? lipsActive : lipsIdle
+      let seam = isLit ? seamActive : seamIdle
 
-      // -- Upper lip --
+      // -- Upper lip: symmetric cupid's bow around center x = 11 --
       let upper = NSBezierPath()
-
-      // Left corner
-      upper.move(to: NSPoint(x: 1.5, y: 9))
-
-      // Left hump rising
-      upper.curve(
-        to: NSPoint(x: 7, y: 15.5),
-        controlPoint1: NSPoint(x: 1.5, y: 12.5),
-        controlPoint2: NSPoint(x: 4, y: 15.5)
-      )
-
-      // Cupid's bow – deep V dip to center
-      upper.curve(
-        to: NSPoint(x: 11, y: 11.5),
-        controlPoint1: NSPoint(x: 9, y: 15.5),
-        controlPoint2: NSPoint(x: 10, y: 11.5)
-      )
-
-      // Right hump rising
-      upper.curve(
-        to: NSPoint(x: 15, y: 15.5),
-        controlPoint1: NSPoint(x: 12, y: 11.5),
-        controlPoint2: NSPoint(x: 13, y: 15.5)
-      )
-
-      // Right corner
-      upper.curve(
-        to: NSPoint(x: 20.5, y: 9),
-        controlPoint1: NSPoint(x: 18, y: 15.5),
-        controlPoint2: NSPoint(x: 20.5, y: 12.5)
-      )
-
-      // Close along mouth line
-      upper.curve(
-        to: NSPoint(x: 1.5, y: 9),
-        controlPoint1: NSPoint(x: 15, y: 7.5),
-        controlPoint2: NSPoint(x: 7, y: 7.5)
-      )
+      upper.move(to: NSPoint(x: 2, y: 9))
+      upper.curve(to: NSPoint(x: 7, y: 14.8),
+                  controlPoint1: NSPoint(x: 2, y: 12.6),
+                  controlPoint2: NSPoint(x: 4.4, y: 14.8))
+      upper.curve(to: NSPoint(x: 11, y: 11.7),
+                  controlPoint1: NSPoint(x: 9.2, y: 14.8),
+                  controlPoint2: NSPoint(x: 10.1, y: 11.7))
+      upper.curve(to: NSPoint(x: 15, y: 14.8),
+                  controlPoint1: NSPoint(x: 11.9, y: 11.7),
+                  controlPoint2: NSPoint(x: 12.8, y: 14.8))
+      upper.curve(to: NSPoint(x: 20, y: 9),
+                  controlPoint1: NSPoint(x: 17.6, y: 14.8),
+                  controlPoint2: NSPoint(x: 20, y: 12.6))
+      upper.curve(to: NSPoint(x: 2, y: 9),
+                  controlPoint1: NSPoint(x: 15, y: 7.7),
+                  controlPoint2: NSPoint(x: 7, y: 7.7))
       upper.close()
 
-      fill.setFill()
-      upper.fill()
-      stroke.setStroke()
-      upper.lineWidth = 1.2
-      upper.lineCapStyle = .round
-      upper.lineJoinStyle = .round
-      upper.stroke()
-
-      // -- Lower lip --
+      // -- Lower lip: full and rounded --
       let lower = NSBezierPath()
-
-      // Left corner (gap below upper)
-      lower.move(to: NSPoint(x: 2.5, y: 8))
-
-      // Mouth line curve top edge
-      lower.curve(
-        to: NSPoint(x: 19.5, y: 8),
-        controlPoint1: NSPoint(x: 7.5, y: 6.8),
-        controlPoint2: NSPoint(x: 14.5, y: 6.8)
-      )
-
-      // Right side sweeping down
-      lower.curve(
-        to: NSPoint(x: 11, y: 1.5),
-        controlPoint1: NSPoint(x: 19.5, y: 4),
-        controlPoint2: NSPoint(x: 16, y: 1.5)
-      )
-
-      // Bottom center back up to left
-      lower.curve(
-        to: NSPoint(x: 2.5, y: 8),
-        controlPoint1: NSPoint(x: 6, y: 1.5),
-        controlPoint2: NSPoint(x: 2.5, y: 4)
-      )
+      lower.move(to: NSPoint(x: 2.6, y: 8.4))
+      lower.curve(to: NSPoint(x: 19.4, y: 8.4),
+                  controlPoint1: NSPoint(x: 7.6, y: 7.4),
+                  controlPoint2: NSPoint(x: 14.4, y: 7.4))
+      lower.curve(to: NSPoint(x: 11, y: 2),
+                  controlPoint1: NSPoint(x: 19.4, y: 4.6),
+                  controlPoint2: NSPoint(x: 15.6, y: 2))
+      lower.curve(to: NSPoint(x: 2.6, y: 8.4),
+                  controlPoint1: NSPoint(x: 6.4, y: 2),
+                  controlPoint2: NSPoint(x: 2.6, y: 4.6))
       lower.close()
 
-      fill.setFill()
+      lips.setFill()
+      upper.fill()
       lower.fill()
-      stroke.setStroke()
-      lower.lineWidth = 1.2
-      lower.lineCapStyle = .round
-      lower.lineJoinStyle = .round
-      lower.stroke()
 
-      // -- Shine highlight on lower lip --
-      lipsHighlight.setFill()
-      let shine = NSBezierPath(ovalIn: NSRect(x: 9, y: 3, width: 5, height: 3))
-      shine.fill()
+      // -- Mouth seam: a single thin parting line --
+      let mouth = NSBezierPath()
+      mouth.move(to: NSPoint(x: 3, y: 8.7))
+      mouth.curve(to: NSPoint(x: 19, y: 8.7),
+                  controlPoint1: NSPoint(x: 8, y: 7.7),
+                  controlPoint2: NSPoint(x: 14, y: 7.7))
+      seam.setStroke()
+      mouth.lineWidth = 0.9
+      mouth.lineCapStyle = .round
+      mouth.stroke()
 
-      // -- State badge --
+      // -- Soft gloss on the lower lip --
+      shine.setFill()
+      NSBezierPath(ovalIn: NSRect(x: 8.5, y: 3.4, width: 5, height: 2.2)).fill()
+
+      // -- Status accent: a small dot with a cohesive dark-red ring --
       switch tone {
       case .idle:
         break
-      case .active:
-        // Green dot
-        NSColor.black.setFill()
-        NSBezierPath(ovalIn: NSRect(x: 16.2, y: 12.2, width: 5.3, height: 5.3)).fill()
-        NSColor.systemGreen.setFill()
-        NSBezierPath(ovalIn: NSRect(x: 16.8, y: 12.8, width: 4.1, height: 4.1)).fill()
-      case .warning:
-        // Yellow warning dot
-        NSColor.black.setFill()
-        NSBezierPath(ovalIn: NSRect(x: 16.2, y: 12.2, width: 5.3, height: 5.3)).fill()
-        NSColor.systemYellow.setFill()
-        NSBezierPath(ovalIn: NSRect(x: 16.8, y: 12.8, width: 4.1, height: 4.1)).fill()
+      case .active, .warning:
+        let dotColor: NSColor = tone == .active ? .systemGreen : .systemYellow
+        let center = NSPoint(x: 18, y: 14)
+        seamActive.setFill()
+        NSBezierPath(ovalIn: NSRect(x: center.x - 3.1, y: center.y - 3.1, width: 6.2, height: 6.2)).fill()
+        dotColor.setFill()
+        NSBezierPath(ovalIn: NSRect(x: center.x - 2.3, y: center.y - 2.3, width: 4.6, height: 4.6)).fill()
       }
 
       return true

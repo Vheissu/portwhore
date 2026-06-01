@@ -8,146 +8,125 @@ struct SettingsView: View {
   @State private var addLabelValueText = ""
   @State private var confirmReset = false
 
+  private let intervals: [(String, TimeInterval)] = [
+    ("2s", 2), ("5s", 5), ("10s", 10), ("30s", 30),
+  ]
+
   var body: some View {
-    ScrollView(showsIndicators: false) {
-      VStack(alignment: .leading, spacing: 14) {
-        settingsHeader
+    VStack(spacing: 0) {
+      header
+      Divider()
+
+      Form {
         watchedPortsSection
         refreshIntervalSection
         portLabelsSection
-        resetSection
+
+        Section {
+          Button("Reset to Defaults", role: .destructive) {
+            confirmReset = true
+          }
+        }
       }
-      .padding(16)
+      .formStyle(.grouped)
+      .scrollContentBackground(.hidden)
     }
-    .alert("Reset to Defaults?", isPresented: $confirmReset) {
+    .background(.regularMaterial)
+    .alert("Reset to defaults?", isPresented: $confirmReset) {
       Button("Cancel", role: .cancel) {}
       Button("Reset", role: .destructive) {
         store.resetWatchedPorts()
       }
     } message: {
-      Text("This will restore all settings to their defaults, including watched ports, labels, and refresh interval.")
+      Text("This restores watched ports, labels, and the refresh interval to their defaults.")
     }
   }
 
   // MARK: - Header
 
-  private var settingsHeader: some View {
-    HStack(spacing: 10) {
+  private var header: some View {
+    HStack(spacing: 8) {
       Button {
         store.showSettings = false
       } label: {
-        HStack(spacing: 4) {
-          Image(systemName: "chevron.left")
-            .font(.system(size: 11, weight: .bold))
-          Text("Back")
-            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-        }
-        .foregroundStyle(PortwhorePalette.action)
+        Label("Back", systemImage: "chevron.left")
+          .labelStyle(.titleAndIcon)
       }
-      .buttonStyle(.plain)
+      .buttonStyle(.borderless)
 
       Spacer()
 
       Text("Settings")
-        .font(.system(size: 16, weight: .bold, design: .monospaced))
-        .foregroundStyle(.white)
+        .font(.system(size: 13, weight: .semibold))
 
       Spacer()
 
-      // Spacer button for symmetry
-      Color.clear.frame(width: 60, height: 1)
+      // Balance the leading button so the title stays centered.
+      Label("Back", systemImage: "chevron.left")
+        .labelStyle(.titleAndIcon)
+        .hidden()
     }
-    .padding(14)
-    .background(PortwhorePalette.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    .overlay(
-      RoundedRectangle(cornerRadius: 14, style: .continuous)
-        .stroke(PortwhorePalette.cardStroke, lineWidth: 1)
-    )
+    .padding(.horizontal, 16)
+    .padding(.vertical, 12)
   }
 
   // MARK: - Watched Ports
 
   private var watchedPortsSection: some View {
-    settingsSection(title: "Watched Ports", subtitle: "\(store.watchedPorts.count) ports") {
-      VStack(spacing: 6) {
-        ForEach(store.watchedPorts, id: \.self) { port in
-          HStack(spacing: 10) {
-            Text(verbatim: "\(port)")
-              .font(.system(size: 14, weight: .bold, design: .monospaced))
-              .foregroundStyle(.white)
-              .frame(width: 60, alignment: .leading)
+    Section {
+      ForEach(store.watchedPorts, id: \.self) { port in
+        HStack(spacing: 10) {
+          Text(verbatim: "\(port)")
+            .font(.system(size: 13, weight: .semibold, design: .monospaced))
+            .frame(width: 52, alignment: .leading)
 
-            if let desc = WellKnownPorts.description(for: port) {
-              Text(desc)
-                .font(.system(size: 11, weight: .medium, design: .monospaced))
-                .foregroundStyle(PortwhorePalette.textMuted)
-            }
-
-            if let label = store.portLabels[port] {
-              Text(label)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(PortwhorePalette.action.opacity(0.6))
-            }
-
-            Spacer()
-
-            Button {
-              store.removeWatchedPort(port)
-            } label: {
-              Image(systemName: "minus.circle.fill")
-                .font(.system(size: 14))
-                .foregroundStyle(PortwhorePalette.warning.opacity(0.7))
-            }
-            .buttonStyle(.plain)
-            .help("Remove from watched ports")
+          if let desc = WellKnownPorts.description(for: port) {
+            Text(desc)
+              .foregroundStyle(PortwhorePalette.textSecondary)
           }
-          .padding(.vertical, 4)
-          .padding(.horizontal, 10)
-          .background(PortwhorePalette.card.opacity(0.5), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        }
-
-        // Add port
-        HStack(spacing: 8) {
-          TextField("Port number", text: $addPortText)
-            .textFieldStyle(.plain)
-            .font(.system(size: 12, weight: .medium, design: .monospaced))
-            .foregroundStyle(.white)
-            .frame(width: 100)
-            .onSubmit { addWatchedPort() }
-
-          Button("Add") {
-            addWatchedPort()
-          }
-          .buttonStyle(.plain)
-          .font(.system(size: 11, weight: .bold, design: .monospaced))
-          .foregroundStyle(PortwhorePalette.action)
-          .padding(.horizontal, 10)
-          .padding(.vertical, 5)
-          .background(PortwhorePalette.actionDeep, in: Capsule())
-
-          if let error = addPortError {
-            Text(error)
-              .font(.system(size: 10, weight: .medium))
-              .foregroundStyle(PortwhorePalette.warning)
+          if let label = store.portLabels[port] {
+            Text(label)
+              .foregroundStyle(PortwhorePalette.accent)
           }
 
           Spacer()
+
+          Button {
+            store.removeWatchedPort(port)
+          } label: {
+            Image(systemName: "minus.circle.fill")
+              .foregroundStyle(PortwhorePalette.textMuted)
+          }
+          .buttonStyle(.borderless)
+          .help("Stop watching this port")
         }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 10)
-        .background(PortwhorePalette.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-          RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .stroke(PortwhorePalette.action.opacity(0.15), lineWidth: 1)
-        )
       }
+
+      HStack(spacing: 8) {
+        TextField("Add port", text: $addPortText)
+          .textFieldStyle(.roundedBorder)
+          .frame(width: 120)
+          .onSubmit { addWatchedPort() }
+        Button("Add") { addWatchedPort() }
+          .disabled(addPortText.trimmingCharacters(in: .whitespaces).isEmpty)
+        if let error = addPortError {
+          Text(error)
+            .font(.system(size: 11))
+            .foregroundStyle(PortwhorePalette.protected)
+        }
+        Spacer()
+      }
+    } header: {
+      Text("Watched Ports")
+    } footer: {
+      Text("\(store.watchedPorts.count) ports pinned to the top of the dashboard.")
     }
   }
 
   private func addWatchedPort() {
     let trimmed = addPortText.trimmingCharacters(in: .whitespaces)
     guard let port = Int(trimmed), port >= 1, port <= 65535 else {
-      addPortError = "Enter 1\u{2013}65535"
+      addPortError = "1\u{2013}65535"
       return
     }
     guard !store.watchedPorts.contains(port) else {
@@ -162,114 +141,65 @@ struct SettingsView: View {
   // MARK: - Refresh Interval
 
   private var refreshIntervalSection: some View {
-    let options: [(String, TimeInterval)] = [
-      ("2s", 2), ("5s", 5), ("10s", 10), ("30s", 30),
-    ]
-
-    return settingsSection(title: "Refresh Interval", subtitle: "Current: \(Int(store.refreshInterval))s") {
-      HStack(spacing: 6) {
-        ForEach(options, id: \.1) { label, interval in
-          Button {
-            store.setRefreshInterval(interval)
-          } label: {
-            Text(label)
-              .font(.system(size: 12, weight: store.refreshInterval == interval ? .bold : .medium, design: .monospaced))
-              .foregroundStyle(store.refreshInterval == interval ? PortwhorePalette.action : PortwhorePalette.textMuted)
-              .padding(.horizontal, 14)
-              .padding(.vertical, 8)
-              .background(
-                store.refreshInterval == interval ? PortwhorePalette.actionDeep : Color.white.opacity(0.04),
-                in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-              )
-              .overlay(
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
-                  .stroke(
-                    store.refreshInterval == interval ? PortwhorePalette.action.opacity(0.3) : Color.clear,
-                    lineWidth: 1
-                  )
-              )
-          }
-          .buttonStyle(.plain)
+    Section("Refresh Interval") {
+      Picker("Scan every", selection: refreshBinding) {
+        ForEach(intervals, id: \.1) { label, interval in
+          Text(label).tag(interval)
         }
-        Spacer()
       }
+      .pickerStyle(.segmented)
     }
+  }
+
+  private var refreshBinding: Binding<TimeInterval> {
+    Binding(
+      get: { store.refreshInterval },
+      set: { store.setRefreshInterval($0) }
+    )
   }
 
   // MARK: - Port Labels
 
   private var portLabelsSection: some View {
-    settingsSection(
-      title: "Port Labels",
-      subtitle: store.portLabels.isEmpty ? "None set" : "\(store.portLabels.count) label(s)"
-    ) {
-      VStack(spacing: 6) {
-        if store.portLabels.isEmpty {
-          Text("No labels set. Use the menu on any port row to add a label.")
-            .font(.system(size: 11, weight: .medium))
-            .foregroundStyle(PortwhorePalette.textMuted)
-            .padding(.vertical, 8)
-        } else {
-          ForEach(Array(store.portLabels.keys.sorted()), id: \.self) { port in
-            HStack(spacing: 10) {
-              Text(verbatim: "\(port)")
-                .font(.system(size: 13, weight: .bold, design: .monospaced))
-                .foregroundStyle(PortwhorePalette.action)
-                .frame(width: 60, alignment: .leading)
-
-              Text(store.portLabels[port] ?? "")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(.white)
-
-              Spacer()
-
-              Button {
-                store.setPortLabel(port, label: nil)
-              } label: {
-                Image(systemName: "xmark.circle.fill")
-                  .font(.system(size: 14))
-                  .foregroundStyle(PortwhorePalette.textMuted)
-              }
-              .buttonStyle(.plain)
+    Section {
+      if store.portLabels.isEmpty {
+        Text("Use the menu on any port to add a label.")
+          .foregroundStyle(PortwhorePalette.textSecondary)
+      } else {
+        ForEach(Array(store.portLabels.keys.sorted()), id: \.self) { port in
+          HStack(spacing: 10) {
+            Text(verbatim: "\(port)")
+              .font(.system(size: 13, weight: .semibold, design: .monospaced))
+              .foregroundStyle(PortwhorePalette.accent)
+              .frame(width: 52, alignment: .leading)
+            Text(store.portLabels[port] ?? "")
+            Spacer()
+            Button {
+              store.setPortLabel(port, label: nil)
+            } label: {
+              Image(systemName: "xmark.circle.fill")
+                .foregroundStyle(PortwhorePalette.textMuted)
             }
-            .padding(.vertical, 4)
-            .padding(.horizontal, 10)
-            .background(PortwhorePalette.card.opacity(0.5), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .buttonStyle(.borderless)
           }
         }
-
-        // Add label
-        HStack(spacing: 8) {
-          TextField("Port", text: $addLabelPortText)
-            .textFieldStyle(.plain)
-            .font(.system(size: 12, weight: .medium, design: .monospaced))
-            .foregroundStyle(.white)
-            .frame(width: 60)
-
-          TextField("Label", text: $addLabelValueText)
-            .textFieldStyle(.plain)
-            .font(.system(size: 12, weight: .medium, design: .monospaced))
-            .foregroundStyle(.white)
-            .onSubmit { addLabel() }
-
-          Button("Add") { addLabel() }
-            .buttonStyle(.plain)
-            .font(.system(size: 11, weight: .bold, design: .monospaced))
-            .foregroundStyle(PortwhorePalette.action)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
-            .background(PortwhorePalette.actionDeep, in: Capsule())
-
-          Spacer()
-        }
-        .padding(.vertical, 6)
-        .padding(.horizontal, 10)
-        .background(PortwhorePalette.card, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-          RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .stroke(PortwhorePalette.action.opacity(0.15), lineWidth: 1)
-        )
       }
+
+      HStack(spacing: 8) {
+        TextField("Port", text: $addLabelPortText)
+          .textFieldStyle(.roundedBorder)
+          .frame(width: 70)
+        TextField("Label", text: $addLabelValueText)
+          .textFieldStyle(.roundedBorder)
+          .onSubmit { addLabel() }
+        Button("Add") { addLabel() }
+          .disabled(addLabelPortText.trimmingCharacters(in: .whitespaces).isEmpty
+                    || addLabelValueText.trimmingCharacters(in: .whitespaces).isEmpty)
+      }
+    } header: {
+      Text("Port Labels")
+    } footer: {
+      Text(store.portLabels.isEmpty ? "No labels set." : "\(store.portLabels.count) label(s) set.")
     }
   }
 
@@ -281,58 +211,5 @@ struct SettingsView: View {
     store.setPortLabel(port, label: label)
     addLabelPortText = ""
     addLabelValueText = ""
-  }
-
-  // MARK: - Reset
-
-  private var resetSection: some View {
-    HStack {
-      Spacer()
-      Button {
-        confirmReset = true
-      } label: {
-        HStack(spacing: 6) {
-          Image(systemName: "arrow.counterclockwise")
-            .font(.system(size: 11, weight: .semibold))
-          Text("Reset to Defaults")
-            .font(.system(size: 12, weight: .semibold, design: .monospaced))
-        }
-        .foregroundStyle(PortwhorePalette.warning)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(PortwhorePalette.warningDeep, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .overlay(
-          RoundedRectangle(cornerRadius: 8, style: .continuous)
-            .stroke(PortwhorePalette.warning.opacity(0.2), lineWidth: 1)
-        )
-      }
-      .buttonStyle(.plain)
-      Spacer()
-    }
-    .padding(.top, 6)
-  }
-
-  // MARK: - Section Helper
-
-  private func settingsSection<Content: View>(title: String, subtitle: String, @ViewBuilder content: () -> Content) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(alignment: .firstTextBaseline, spacing: 8) {
-        Text(title)
-          .font(.system(size: 14, weight: .bold, design: .monospaced))
-          .foregroundStyle(.white)
-
-        Text(subtitle)
-          .font(.system(size: 11, weight: .medium, design: .monospaced))
-          .foregroundStyle(PortwhorePalette.textMuted)
-      }
-
-      content()
-    }
-    .padding(12)
-    .background(PortwhorePalette.card.opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    .overlay(
-      RoundedRectangle(cornerRadius: 14, style: .continuous)
-        .stroke(PortwhorePalette.cardStroke, lineWidth: 1)
-    )
   }
 }

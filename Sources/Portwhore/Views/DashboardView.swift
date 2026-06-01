@@ -5,343 +5,246 @@ struct DashboardView: View {
 
   var body: some View {
     ZStack {
-      PortwhorePalette.background.ignoresSafeArea()
-
       if store.showSettings {
         SettingsView(store: store)
-          .transition(.move(edge: .trailing))
+          .transition(.move(edge: .trailing).combined(with: .opacity))
       } else {
         mainContent
-          .transition(.move(edge: .leading))
+          .transition(.move(edge: .leading).combined(with: .opacity))
       }
     }
+    .background(.regularMaterial)
     .animation(.easeInOut(duration: 0.2), value: store.showSettings)
-    .alert("Kill All My Ports?", isPresented: $store.confirmKillAll) {
+    .alert("Stop all your processes?", isPresented: $store.confirmKillAll) {
       Button("Cancel", role: .cancel) {}
-      Button("Kill All", role: .destructive) {
+      Button("Stop All", role: .destructive) {
         store.killAllMyPorts()
       }
     } message: {
-      Text("This will stop \(store.killableCount) process(es) you own across all ports.")
+      Text("This stops \(store.killableCount) process(es) you own across every port.")
     }
   }
 
   // MARK: - Main Content
 
   private var mainContent: some View {
-    ScrollView(showsIndicators: false) {
-      VStack(alignment: .leading, spacing: 14) {
-        headerBar
-        searchBar
+    VStack(spacing: 0) {
+      header
+      Divider()
 
-        if let msg = store.lastActionMessage {
-          actionBanner(msg)
-        }
+      ScrollView(showsIndicators: false) {
+        VStack(alignment: .leading, spacing: 18) {
+          controls
 
-        if let err = store.lastError {
-          errorBanner(err)
-        }
+          if let msg = store.lastActionMessage {
+            banner(msg, systemImage: "checkmark.circle.fill", tint: PortwhorePalette.mine)
+          }
+          if let err = store.lastError {
+            banner(err, systemImage: "exclamationmark.triangle.fill", tint: PortwhorePalette.protected)
+          }
 
-        sortToolbar
-
-        sectionCard(
-          title: "Hot Ports",
-          subtitle: "\(store.occupiedWatchedPorts.count) busy · \(store.watchedPorts.count - store.occupiedWatchedPorts.count) free"
-        ) {
-          VStack(spacing: 6) {
+          section(
+            "Hot Ports",
+            detail: "\(store.occupiedWatchedPorts.count) busy · \(store.watchedPorts.count - store.occupiedWatchedPorts.count) free"
+          ) {
             ForEach(store.filteredWatchedSlots) { slot in
               WatchedPortRowView(slot: slot, store: store)
             }
           }
-        }
 
-        if !store.filteredOtherRecords.isEmpty {
-          sectionCard(
-            title: "Other Listeners",
-            subtitle: "\(store.filteredOtherRecords.count) active"
-          ) {
-            VStack(spacing: 6) {
+          if !store.filteredOtherRecords.isEmpty {
+            section("Other Listeners", detail: "\(store.filteredOtherRecords.count) active") {
               ForEach(store.filteredOtherRecords) { record in
                 ActivePortRowView(record: record, store: store)
               }
             }
           }
-        }
 
-        if !store.searchQuery.isEmpty && store.filteredWatchedSlots.isEmpty && store.filteredOtherRecords.isEmpty {
-          HStack {
-            Spacer()
-            VStack(spacing: 6) {
-              Image(systemName: "magnifyingglass")
-                .font(.system(size: 24, weight: .light))
-                .foregroundStyle(PortwhorePalette.textMuted)
-              Text("No matches for \"\(store.searchQuery)\"")
-                .font(.system(size: 12, weight: .medium, design: .monospaced))
-                .foregroundStyle(PortwhorePalette.textMuted)
-            }
-            .padding(.vertical, 24)
-            Spacer()
+          if !store.searchQuery.isEmpty && store.filteredWatchedSlots.isEmpty && store.filteredOtherRecords.isEmpty {
+            emptyState
           }
         }
+        .padding(16)
       }
-      .padding(16)
     }
   }
 
   // MARK: - Header
 
-  private var headerBar: some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(spacing: 10) {
-        Image(systemName: "network")
-          .font(.system(size: 18, weight: .semibold))
-          .foregroundStyle(PortwhorePalette.action)
-
+  private var header: some View {
+    VStack(spacing: 10) {
+      HStack(spacing: 8) {
         Text("Portwhore")
-          .font(.system(size: 20, weight: .black, design: .monospaced))
-          .foregroundStyle(.white)
+          .font(.system(size: 15, weight: .semibold))
 
         Spacer()
 
-        Button {
-          store.showSettings = true
-        } label: {
-          Image(systemName: "gearshape")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(PortwhorePalette.textSecondary)
-        }
-        .buttonStyle(.plain)
-        .frame(width: 26, height: 26)
-        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .contentShape(Rectangle())
-        .help("Settings")
-
-        Button {
-          store.exportPortList()
-        } label: {
-          Image(systemName: "doc.on.clipboard")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(PortwhorePalette.textSecondary)
-        }
-        .buttonStyle(.plain)
-        .frame(width: 26, height: 26)
-        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .contentShape(Rectangle())
-        .help("Export Port List")
-
+        chromeButton("gearshape", help: "Settings") { store.showSettings = true }
+        chromeButton("doc.on.clipboard", help: "Copy Port List") { store.exportPortList() }
         Button {
           Task { await store.refreshNow() }
         } label: {
           Image(systemName: "arrow.clockwise")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundStyle(PortwhorePalette.textSecondary)
             .symbolEffect(.rotate, isActive: store.isRefreshing)
         }
-        .buttonStyle(.plain)
-        .frame(width: 26, height: 26)
-        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .contentShape(Rectangle())
+        .buttonStyle(.borderless)
         .help("Refresh")
-
-        Button {
-          NSApplication.shared.terminate(nil)
-        } label: {
-          Image(systemName: "power")
-            .font(.system(size: 11, weight: .semibold))
-            .foregroundStyle(PortwhorePalette.textMuted)
-        }
-        .buttonStyle(.plain)
-        .frame(width: 26, height: 26)
-        .background(Color.white.opacity(0.04), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-        .contentShape(Rectangle())
-        .help("Quit Portwhore")
+        chromeButton("power", help: "Quit Portwhore") { NSApplication.shared.terminate(nil) }
       }
 
       statsLine
     }
-    .padding(14)
-    .background(PortwhorePalette.card, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    .overlay(
-      RoundedRectangle(cornerRadius: 14, style: .continuous)
-        .stroke(PortwhorePalette.cardStroke, lineWidth: 1)
-    )
+    .padding(.horizontal, 16)
+    .padding(.vertical, 12)
+  }
+
+  private func chromeButton(_ symbol: String, help: String, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+      Image(systemName: symbol)
+    }
+    .buttonStyle(.borderless)
+    .help(help)
   }
 
   private var statsLine: some View {
-    HStack(spacing: 4) {
-      Text(verbatim: "\(store.records.count)")
-        .fontWeight(.bold)
-        .foregroundStyle(PortwhorePalette.action)
-      Text("listening")
-        .foregroundStyle(PortwhorePalette.textMuted)
-      Text("·")
-        .foregroundStyle(PortwhorePalette.textMuted.opacity(0.5))
-        .padding(.horizontal, 2)
-      Text(verbatim: "\(store.killableCount)")
-        .fontWeight(.bold)
-        .foregroundStyle(PortwhorePalette.action)
-      Text("yours")
-        .foregroundStyle(PortwhorePalette.textMuted)
-      Text("·")
-        .foregroundStyle(PortwhorePalette.textMuted.opacity(0.5))
-        .padding(.horizontal, 2)
-      Text(verbatim: "\(store.protectedCount)")
-        .fontWeight(.bold)
-        .foregroundStyle(PortwhorePalette.warning)
-      Text("protected")
-        .foregroundStyle(PortwhorePalette.textMuted)
-
-      if store.killableCount > 0 {
-        Spacer()
-        Button {
-          store.confirmKillAll = true
-        } label: {
-          HStack(spacing: 4) {
-            Image(systemName: "xmark.circle")
-              .font(.system(size: 9, weight: .bold))
-            Text("Kill All Mine")
-          }
-          .font(.system(size: 9, weight: .bold, design: .monospaced))
-          .foregroundStyle(PortwhorePalette.warning)
-          .padding(.horizontal, 8)
-          .padding(.vertical, 4)
-          .background(PortwhorePalette.warningDeep, in: Capsule())
-        }
-        .buttonStyle(.plain)
-        .help("Kill all processes you own")
-      }
-    }
-    .font(.system(size: 11, weight: .medium, design: .monospaced))
-  }
-
-  // MARK: - Search
-
-  private var searchBar: some View {
-    HStack(spacing: 8) {
-      Image(systemName: "magnifyingglass")
-        .font(.system(size: 12, weight: .medium))
-        .foregroundStyle(PortwhorePalette.textMuted)
-
-      TextField("Search ports, processes, PIDs...", text: $store.searchQuery)
-        .textFieldStyle(.plain)
-        .font(.system(size: 12, weight: .medium, design: .monospaced))
-        .foregroundStyle(.white)
-
-      if !store.searchQuery.isEmpty {
-        Button {
-          store.searchQuery = ""
-        } label: {
-          Image(systemName: "xmark.circle.fill")
-            .font(.system(size: 12))
-            .foregroundStyle(PortwhorePalette.textMuted)
-        }
-        .buttonStyle(.plain)
-      }
-    }
-    .padding(10)
-    .background(PortwhorePalette.card, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    .overlay(
-      RoundedRectangle(cornerRadius: 10, style: .continuous)
-        .stroke(PortwhorePalette.cardStroke, lineWidth: 1)
-    )
-  }
-
-  // MARK: - Sort Toolbar
-
-  private var sortToolbar: some View {
-    HStack(spacing: 8) {
-      Text("Sort:")
-        .font(.system(size: 10, weight: .medium, design: .monospaced))
-        .foregroundStyle(PortwhorePalette.textMuted)
-
-      ForEach(PortSortOrder.allCases, id: \.self) { order in
-        Button {
-          store.sortOrder = order
-        } label: {
-          Text(order.rawValue)
-            .font(.system(size: 10, weight: store.sortOrder == order ? .bold : .medium, design: .monospaced))
-            .foregroundStyle(store.sortOrder == order ? PortwhorePalette.action : PortwhorePalette.textMuted)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
-            .background(
-              store.sortOrder == order ? PortwhorePalette.actionDeep : Color.white.opacity(0.03),
-              in: Capsule()
-            )
-        }
-        .buttonStyle(.plain)
-      }
+    HStack(spacing: 6) {
+      statPill(count: store.records.count, label: "listening", tint: .secondary)
+      statPill(count: store.killableCount, label: "yours", tint: PortwhorePalette.mine)
+      statPill(count: store.protectedCount, label: "protected", tint: PortwhorePalette.protected)
 
       Spacer()
 
-      if let lastUpdated = store.lastUpdated {
-        Text(DateFormatting.relativeString(for: lastUpdated))
-          .font(.system(size: 10, weight: .medium, design: .monospaced))
-          .foregroundStyle(PortwhorePalette.textMuted.opacity(0.6))
+      if store.killableCount > 0 {
+        Button(role: .destructive) {
+          store.confirmKillAll = true
+        } label: {
+          Label("Stop All Mine", systemImage: "stop.circle")
+        }
+        .buttonStyle(.bordered)
+        .controlSize(.small)
+        .tint(.red)
+        .help("Stop every process you own")
       }
     }
+    .font(.system(size: 11))
   }
 
-  // MARK: - Banners
-
-  private func actionBanner(_ message: String) -> some View {
-    HStack(spacing: 8) {
-      Image(systemName: "checkmark.circle.fill")
-        .foregroundStyle(PortwhorePalette.action)
-      Text(message)
-        .font(.system(size: 12, weight: .medium, design: .rounded))
-        .foregroundStyle(.white)
-        .lineLimit(2)
+  private func statPill(count: Int, label: String, tint: Color) -> some View {
+    HStack(spacing: 4) {
+      Text(verbatim: "\(count)")
+        .font(.system(size: 11, weight: .semibold, design: .monospaced))
+        .foregroundStyle(tint)
+      Text(label)
+        .foregroundStyle(PortwhorePalette.textSecondary)
     }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 10)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(PortwhorePalette.actionDeep, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    .overlay(
-      RoundedRectangle(cornerRadius: 10, style: .continuous)
-        .stroke(PortwhorePalette.action.opacity(0.2), lineWidth: 1)
-    )
   }
 
-  private func errorBanner(_ message: String) -> some View {
-    HStack(spacing: 8) {
-      Image(systemName: "exclamationmark.triangle.fill")
-        .foregroundStyle(PortwhorePalette.warning)
-      Text(message)
-        .font(.system(size: 12, weight: .medium, design: .rounded))
-        .foregroundStyle(.white)
-        .lineLimit(2)
-    }
-    .padding(.horizontal, 14)
-    .padding(.vertical, 10)
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .background(PortwhorePalette.warningDeep, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
-    .overlay(
-      RoundedRectangle(cornerRadius: 10, style: .continuous)
-        .stroke(PortwhorePalette.warning.opacity(0.2), lineWidth: 1)
-    )
-  }
+  // MARK: - Controls (search + sort)
 
-  // MARK: - Section Card
-
-  private func sectionCard<Content: View>(title: String, subtitle: String, @ViewBuilder content: () -> Content) -> some View {
-    VStack(alignment: .leading, spacing: 10) {
-      HStack(alignment: .firstTextBaseline, spacing: 8) {
-        Text(title)
-          .font(.system(size: 14, weight: .bold, design: .monospaced))
-          .foregroundStyle(.white)
-
-        Text(subtitle)
-          .font(.system(size: 11, weight: .medium, design: .monospaced))
+  private var controls: some View {
+    VStack(spacing: 10) {
+      HStack(spacing: 6) {
+        Image(systemName: "magnifyingglass")
+          .font(.system(size: 12))
           .foregroundStyle(PortwhorePalette.textMuted)
-      }
 
-      content()
+        TextField("Search ports, processes, PIDs", text: $store.searchQuery)
+          .textFieldStyle(.plain)
+          .font(.system(size: 12))
+
+        if !store.searchQuery.isEmpty {
+          Button {
+            store.searchQuery = ""
+          } label: {
+            Image(systemName: "xmark.circle.fill")
+              .foregroundStyle(PortwhorePalette.textMuted)
+          }
+          .buttonStyle(.borderless)
+        }
+      }
+      .padding(.horizontal, 9)
+      .padding(.vertical, 6)
+      .background(PortwhorePalette.surface, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
+      .overlay(
+        RoundedRectangle(cornerRadius: 7, style: .continuous)
+          .stroke(PortwhorePalette.separator, lineWidth: 1)
+      )
+
+      HStack(spacing: 8) {
+        Picker("Sort", selection: $store.sortOrder) {
+          ForEach(PortSortOrder.allCases, id: \.self) { order in
+            Text(order.rawValue).tag(order)
+          }
+        }
+        .pickerStyle(.segmented)
+        .labelsHidden()
+
+        if let lastUpdated = store.lastUpdated {
+          Text(DateFormatting.relativeString(for: lastUpdated))
+            .font(.system(size: 10))
+            .foregroundStyle(PortwhorePalette.textMuted)
+            .fixedSize()
+        }
+      }
     }
-    .padding(12)
-    .background(PortwhorePalette.card.opacity(0.5), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-    .overlay(
-      RoundedRectangle(cornerRadius: 14, style: .continuous)
-        .stroke(PortwhorePalette.cardStroke, lineWidth: 1)
-    )
+  }
+
+  // MARK: - Banner
+
+  private func banner(_ message: String, systemImage: String, tint: Color) -> some View {
+    HStack(spacing: 8) {
+      Image(systemName: systemImage)
+        .foregroundStyle(tint)
+      Text(message)
+        .font(.system(size: 12))
+        .foregroundStyle(.primary)
+        .lineLimit(2)
+      Spacer(minLength: 0)
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 9)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+  }
+
+  // MARK: - Section
+
+  private func section<Content: View>(
+    _ title: String,
+    detail: String,
+    @ViewBuilder content: () -> Content
+  ) -> some View {
+    VStack(alignment: .leading, spacing: 8) {
+      HStack(alignment: .firstTextBaseline, spacing: 6) {
+        Text(title.uppercased())
+          .font(.system(size: 11, weight: .semibold))
+          .foregroundStyle(PortwhorePalette.textSecondary)
+          .kerning(0.4)
+        Text(detail)
+          .font(.system(size: 11))
+          .foregroundStyle(PortwhorePalette.textMuted)
+        Spacer(minLength: 0)
+      }
+      .padding(.leading, 2)
+
+      VStack(spacing: 6) {
+        content()
+      }
+    }
+  }
+
+  // MARK: - Empty State
+
+  private var emptyState: some View {
+    VStack(spacing: 8) {
+      Image(systemName: "magnifyingglass")
+        .font(.system(size: 22, weight: .light))
+        .foregroundStyle(PortwhorePalette.textMuted)
+      Text("No matches for \u{201C}\(store.searchQuery)\u{201D}")
+        .font(.system(size: 12))
+        .foregroundStyle(PortwhorePalette.textSecondary)
+    }
+    .frame(maxWidth: .infinity)
+    .padding(.vertical, 32)
   }
 }

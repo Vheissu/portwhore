@@ -11,7 +11,11 @@ struct ProcessActionResult: Sendable {
 
 struct ProcessController: Sendable {
   func freePort(_ record: PortRecord, force: Bool) throws -> ProcessActionResult {
-    let pids = record.uniquePIDs
+    try terminate(pids: record.uniquePIDs, force: force)
+  }
+
+  func terminate(pids: [Int], force: Bool) throws -> ProcessActionResult {
+    let pids = Array(Set(pids)).sorted()
     var killed: [Int] = []
     var failures: [String] = []
 
