@@ -22,5 +22,18 @@ struct PortScannerParsingTests {
     #expect(PortScannerParsing.extractPort(from: "127.0.0.1:9000") == 9000)
     #expect(PortScannerParsing.extractPort(from: "[::1]:5173 (LISTEN)") == 5173)
     #expect(PortScannerParsing.extractPort(from: "*:http") == nil)
+    #expect(PortScannerParsing.extractPort(from: "*:0") == nil)
+    #expect(PortScannerParsing.extractPort(from: "*:65536") == nil)
+  }
+
+  @Test("Connected UDP sockets are grouped by their local port")
+  func parsesConnectedUDP() {
+    let line = "client 5296 dwayne 13u IPv4 0x40b30dfb5dcfb6cf 0t0 UDP 127.0.0.1:54321->127.0.0.1:443"
+    let listener = PortScannerParsing.parse(line: line, transport: .udp)
+    #expect(listener?.port == 54321)
+    #expect(listener?.endpoint == "127.0.0.1:54321->127.0.0.1:443")
+    #expect(PortScannerParsing.extractPort(from: "[::1]:54321->[::1]:443") == 54321)
+    #expect(PortScannerParsing.extractPort(from: "*:54321->*:*") == 54321)
+    #expect(PortScannerParsing.extractPort(from: "*:*->127.0.0.1:443") == nil)
   }
 }

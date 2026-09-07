@@ -53,15 +53,19 @@ final class StatusBarController: NSObject {
   }
 
   @objc private func togglePopover(_ sender: AnyObject?) {
-    guard let button = statusItem.button else {
-      return
-    }
-
     if popover.isShown {
       popover.performClose(sender)
     } else {
-      popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-      popover.contentViewController?.view.window?.becomeKey()
+      showPopover()
     }
+  }
+
+  func showPopover() {
+    guard let button = statusItem.button else { return }
+    NSApp.activate()
+    if !popover.isShown {
+      popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+    }
+    popover.contentViewController?.view.window?.becomeKey()
   }
 }

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
   @Bindable var store: PortDashboardStore
+  var showsBackButton = true
   @State private var addPortText = ""
   @State private var addPortError: String?
   @State private var addLabelPortText = ""
@@ -14,8 +15,10 @@ struct SettingsView: View {
 
   var body: some View {
     VStack(spacing: 0) {
-      header
-      Divider()
+      if showsBackButton {
+        header
+        Divider()
+      }
 
       Form {
         watchedPortsSection

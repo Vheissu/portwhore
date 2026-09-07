@@ -9,6 +9,10 @@ enum DateFormatting {
       return "Starting up"
     }
 
+    if Date().timeIntervalSince(date) < 1 {
+      return "Just now"
+    }
+
     return formatter.localizedString(for: date, relativeTo: Date())
   }
 }

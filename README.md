@@ -15,7 +15,8 @@ Portwhore lives in your menu bar and keeps an eye on every listening port on you
 - **Custom labels** — name your ports inline so you remember what's running where
 - **Well-known port recognition** — built-in database of 40+ common services (MySQL, PostgreSQL, Redis, Vite, etc.)
 - **Quick actions** — open in browser, copy port/PID/command/endpoint/kill command to clipboard
-- **Search and sort** — filter by name or port, sort by port number, process name, or PID
+- **Search and sort** — filter by port, process, PID, label, protocol, or endpoint; sort other listeners by port number, process name, or PID
+- **Keyboard shortcuts** — ⌘F focuses search, ⌘R refreshes, ⌘, opens settings, and ⇧⌘C copies the port list
 
 ## Requirements
 
@@ -39,7 +40,9 @@ The included build script handles building the `.app` bundle and launching it:
 ./script/build_and_run.sh verify   # Check if running
 ```
 
-The built app lands in `dist/Portwhore.app`.
+The built app lands in `dist/Portwhore.app`. Opening it again brings up the popover.
+
+Run the regression tests with `swift test`. These cover socket parsing, large command output, search, sorting, and process-action state. Process-action tests use a fake controller; they do not stop your running services.
 
 ## Configuration
 
@@ -50,7 +53,9 @@ All settings are managed through the in-app Settings panel:
 - **Port labels** — assign custom names to any port
 - **Reset** — restore defaults with one click
 
-Settings persist via UserDefaults.
+Settings persist via UserDefaults. You can also watch or unwatch an active port from its row menu. Right-click a free watched port to copy its number or stop watching it.
+
+Ports show “Not checked” until a scan succeeds. A failed scan retains the previous results and shows an error. Stop actions report when a signal was sent; check the next scan to see whether the process released the port. Action errors remain visible until dismissed or another stop action begins.
 
 ## How it works
 

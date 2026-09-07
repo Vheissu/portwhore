@@ -10,6 +10,11 @@ final class PortwhoreAppDelegate: NSObject, NSApplicationDelegate {
     NSApp.setActivationPolicy(.accessory)
     statusBarController = StatusBarController(store: store)
   }
+
+  func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+    statusBarController?.showPopover()
+    return false
+  }
 }
 
 @main
@@ -18,7 +23,8 @@ struct PortwhoreApp: App {
 
   var body: some Scene {
     Settings {
-      EmptyView()
+      SettingsView(store: appDelegate.store, showsBackButton: false)
+        .frame(width: 480, height: 600)
     }
   }
 }

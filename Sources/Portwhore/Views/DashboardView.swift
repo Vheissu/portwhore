@@ -2,6 +2,8 @@ import SwiftUI
 
 struct DashboardView: View {
   @Bindable var store: PortDashboardStore
+  @State private var searchFocusRequest = 0
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
   var body: some View {
     ZStack {
@@ -14,14 +16,14 @@ struct DashboardView: View {
       }
     }
     .background(.regularMaterial)
-    .animation(.easeInOut(duration: 0.2), value: store.showSettings)
+    .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: store.showSettings)
     .alert("Stop all your processes?", isPresented: $store.confirmKillAll) {
       Button("Cancel", role: .cancel) {}
       Button("Stop All", role: .destructive) {
         store.killAllMyPorts()
       }
     } message: {
-      Text("This stops \(store.killableCount) process(es) you own across every port.")
+      Text("This sends a stop request to \(store.killableProcessCount) processes you own across \(store.killableCount) ports. A process may serve more than one port.")
     }
   }
 
@@ -31,21 +33,29 @@ struct DashboardView: View {
     VStack(spacing: 0) {
       header
       Divider()
+      controls
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+      Divider()
 
-      ScrollView(showsIndicators: false) {
+      ScrollView {
         VStack(alignment: .leading, spacing: 18) {
-          controls
-
           if let msg = store.lastActionMessage {
             banner(msg, systemImage: "checkmark.circle.fill", tint: PortwhorePalette.mine)
           }
           if let err = store.lastError {
             banner(err, systemImage: "exclamationmark.triangle.fill", tint: PortwhorePalette.protected)
+            if store.lastActionError != nil {
+              Button("Dismiss action error") { store.dismissActionError() }
+                .buttonStyle(.borderless)
+            }
           }
 
           section(
             "Hot Ports",
-            detail: "\(store.occupiedWatchedPorts.count) busy · \(store.watchedPorts.count - store.occupiedWatchedPorts.count) free"
+            detail: store.hasCurrentScan
+              ? "\(store.occupiedWatchedPorts.count) busy · \(store.watchedPorts.count - store.occupiedWatchedPorts.count) free"
+              : "Waiting for a successful scan"
           ) {
             ForEach(store.filteredWatchedSlots) { slot in
               WatchedPortRowView(slot: slot, store: store)
@@ -60,7 +70,7 @@ struct DashboardView: View {
             }
           }
 
-          if !store.searchQuery.isEmpty && store.filteredWatchedSlots.isEmpty && store.filteredOtherRecords.isEmpty {
+          if !store.normalizedSearchQuery.isEmpty && store.filteredWatchedSlots.isEmpty && store.filteredOtherRecords.isEmpty {
             emptyState
           }
         }
@@ -80,16 +90,22 @@ struct DashboardView: View {
         Spacer()
 
         chromeButton("gearshape", help: "Settings") { store.showSettings = true }
+          .keyboardShortcut(",")
         chromeButton("doc.on.clipboard", help: "Copy Port List") { store.exportPortList() }
+          .keyboardShortcut("c", modifiers: [.command, .shift])
         Button {
           Task { await store.refreshNow() }
         } label: {
           Image(systemName: "arrow.clockwise")
-            .symbolEffect(.rotate, isActive: store.isRefreshing)
+            .symbolEffect(.rotate, isActive: store.isRefreshing && !reduceMotion)
         }
         .buttonStyle(.borderless)
         .help("Refresh")
+        .accessibilityLabel("Refresh")
+        .keyboardShortcut("r")
+        .disabled(store.isRefreshing)
         chromeButton("power", help: "Quit Portwhore") { NSApplication.shared.terminate(nil) }
+          .keyboardShortcut("q")
       }
 
       statsLine
@@ -104,6 +120,7 @@ struct DashboardView: View {
     }
     .buttonStyle(.borderless)
     .help(help)
+    .accessibilityLabel(help)
   }
 
   private var statsLine: some View {
@@ -124,6 +141,7 @@ struct DashboardView: View {
         .controlSize(.small)
         .tint(.red)
         .help("Stop every process you own")
+        .disabled(store.isPerformingAction || !store.hasCurrentScan)
       }
     }
     .font(.system(size: 11))
@@ -143,32 +161,13 @@ struct DashboardView: View {
 
   private var controls: some View {
     VStack(spacing: 10) {
-      HStack(spacing: 6) {
-        Image(systemName: "magnifyingglass")
-          .font(.system(size: 12))
-          .foregroundStyle(PortwhorePalette.textMuted)
-
-        TextField("Search ports, processes, PIDs", text: $store.searchQuery)
-          .textFieldStyle(.plain)
-          .font(.system(size: 12))
-
-        if !store.searchQuery.isEmpty {
-          Button {
-            store.searchQuery = ""
-          } label: {
-            Image(systemName: "xmark.circle.fill")
-              .foregroundStyle(PortwhorePalette.textMuted)
-          }
-          .buttonStyle(.borderless)
+      PortSearchField(text: $store.searchQuery, focusRequest: searchFocusRequest)
+        .frame(height: 24)
+        .background {
+          Button("Find") { searchFocusRequest += 1 }
+            .keyboardShortcut("f")
+            .hidden()
         }
-      }
-      .padding(.horizontal, 9)
-      .padding(.vertical, 6)
-      .background(PortwhorePalette.surface, in: RoundedRectangle(cornerRadius: 7, style: .continuous))
-      .overlay(
-        RoundedRectangle(cornerRadius: 7, style: .continuous)
-          .stroke(PortwhorePalette.separator, lineWidth: 1)
-      )
 
       HStack(spacing: 8) {
         Picker("Sort", selection: $store.sortOrder) {
@@ -179,10 +178,10 @@ struct DashboardView: View {
         .pickerStyle(.segmented)
         .labelsHidden()
 
-        if let lastUpdated = store.lastUpdated {
-          Text(DateFormatting.relativeString(for: lastUpdated))
-            .font(.system(size: 10))
-            .foregroundStyle(PortwhorePalette.textMuted)
+        TimelineView(.periodic(from: .now, by: 1)) { _ in
+          Text(store.isRefreshing ? "Scanning…" : store.lastScanError != nil ? "Scan failed" : DateFormatting.relativeString(for: store.lastUpdated))
+            .font(.caption)
+            .foregroundStyle(.secondary)
             .fixedSize()
         }
       }
@@ -198,7 +197,8 @@ struct DashboardView: View {
       Text(message)
         .font(.system(size: 12))
         .foregroundStyle(.primary)
-        .lineLimit(2)
+        .fixedSize(horizontal: false, vertical: true)
+        .textSelection(.enabled)
       Spacer(minLength: 0)
     }
     .padding(.horizontal, 12)

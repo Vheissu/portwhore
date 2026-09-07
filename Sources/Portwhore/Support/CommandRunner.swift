@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 enum CommandRunnerError: LocalizedError {
   case failed(status: Int32, message: String)
@@ -24,10 +25,21 @@ enum CommandRunner {
     process.standardError = stderr
 
     try process.run()
-    process.waitUntilExit()
+
+    // Drain both pipes while the child runs: either pipe can fill and block it.
+    let capturedError = Mutex(Data())
+    let readers = DispatchGroup()
+    readers.enter()
+    DispatchQueue.global(qos: .utility).async {
+      let data = stderr.fileHandleForReading.readDataToEndOfFile()
+      capturedError.withLock { $0 = data }
+      readers.leave()
+    }
 
     let outputData = stdout.fileHandleForReading.readDataToEndOfFile()
-    let errorData = stderr.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    readers.wait()
+    let errorData = capturedError.withLock { $0 }
 
     let output = String(decoding: outputData, as: UTF8.self)
     let errorOutput = String(decoding: errorData, as: UTF8.self)

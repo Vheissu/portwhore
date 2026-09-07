@@ -11,8 +11,13 @@ struct WatchedPortRowView: View {
     } else {
       FreePortRowView(
         port: slot.port,
-        label: store.portLabels[slot.port]
+        label: store.portLabels[slot.port],
+        availabilityKnown: store.hasCurrentScan
       )
+      .contextMenu {
+        Button("Copy Port") { Pasteboard.copy(String(slot.port)) }
+        Button("Stop Watching") { store.removeWatchedPort(slot.port) }
+      }
     }
   }
 }
@@ -66,6 +71,8 @@ struct ActivePortRowView: View {
         .buttonStyle(.bordered)
         .controlSize(.small)
         .tint(tone.color)
+        .disabled(store.isPerformingAction || !store.hasCurrentScan)
+        .help("Send a stop request to the processes using port \(record.port)")
 
         portMenu
       }
@@ -119,6 +126,14 @@ struct ActivePortRowView: View {
 
   private var portMenu: some View {
     Menu {
+      if store.watchedPorts.contains(record.port) {
+        Button("Stop Watching") { store.removeWatchedPort(record.port) }
+      } else {
+        Button("Watch Port") { store.addWatchedPort(record.port) }
+      }
+
+      Divider()
+
       if label != nil {
         Button("Edit Label…") {
           store.editingLabelText = label ?? ""
@@ -169,6 +184,7 @@ struct ActivePortRowView: View {
       Button("Force Kill", role: .destructive) {
         store.freePort(record, force: true)
       }
+      .disabled(store.isPerformingAction || !store.hasCurrentScan)
     } label: {
       Image(systemName: "ellipsis")
         .foregroundStyle(PortwhorePalette.textSecondary)
@@ -176,6 +192,8 @@ struct ActivePortRowView: View {
     .menuStyle(.borderlessButton)
     .menuIndicator(.hidden)
     .fixedSize()
+    .help("Actions for port \(record.port)")
+    .accessibilityLabel("Actions for port \(record.port)")
   }
 
   // MARK: - Label Editor
@@ -258,13 +276,14 @@ struct TransportTag: View {
 struct FreePortRowView: View {
   let port: Int
   let label: String?
+  var availabilityKnown = true
 
   var body: some View {
     HStack(spacing: 10) {
       PortBadge(port: port, tone: .free)
 
       VStack(alignment: .leading, spacing: 2) {
-        Text("Free")
+        Text(availabilityKnown ? "Free" : "Not checked")
           .font(.system(size: 13, weight: .medium))
           .foregroundStyle(PortwhorePalette.textSecondary)
 
@@ -283,9 +302,9 @@ struct FreePortRowView: View {
 
       Spacer()
 
-      Image(systemName: "checkmark.circle")
+      Image(systemName: availabilityKnown ? "checkmark.circle" : "questionmark.circle")
         .font(.system(size: 14))
-        .foregroundStyle(PortwhorePalette.mine.opacity(0.5))
+        .foregroundStyle(availabilityKnown ? PortwhorePalette.mine : PortwhorePalette.textMuted)
     }
     .padding(10)
     .background(PortwhorePalette.surface.opacity(0.4), in: RoundedRectangle(cornerRadius: 10, style: .continuous))

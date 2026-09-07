@@ -49,7 +49,7 @@ struct PortScanner: Sendable {
     let output: String
     do {
       output = try CommandRunner.run(executable: "/usr/sbin/lsof", arguments: arguments)
-    } catch let CommandRunnerError.failed(status, _) where status == 1 {
+    } catch let CommandRunnerError.failed(status, message) where status == 1 && message.isEmpty {
       return []
     }
 
@@ -155,13 +155,15 @@ enum PortScannerParsing {
   }
 
   static func extractPort(from endpoint: String) -> Int? {
-    let trimmed = cleanEndpoint(endpoint)
+    // Connected UDP sockets include local->remote; only the local port is occupied here.
+    let trimmed = cleanEndpoint(endpoint).components(separatedBy: "->")[0]
     guard let range = trimmed.range(of: #":(\d+)$"#, options: .regularExpression) else {
       return nil
     }
 
     let value = trimmed[range].dropFirst()
-    return Int(value)
+    guard let port = Int(value), PortValidation.isValidPort(port) else { return nil }
+    return port
   }
 
   static func extractState(from endpoint: String) -> String? {

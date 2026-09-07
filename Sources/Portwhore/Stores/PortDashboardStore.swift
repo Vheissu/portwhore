@@ -15,7 +15,16 @@ final class PortDashboardStore {
   var records: [PortRecord] = []
   var isRefreshing = false
   var lastUpdated: Date?
-  var lastError: String?
+  var lastScanError: String?
+  var lastActionError: String?
+  var isPerformingAction = false
+
+  var lastError: String? {
+    let errors = [lastScanError, lastActionError].compactMap { $0 }
+    return errors.isEmpty ? nil : errors.joined(separator: "\n")
+  }
+
+  var hasCurrentScan: Bool { lastUpdated != nil && lastScanError == nil }
   var lastActionMessage: String?
   var onStatusChange: (() -> Void)?
 
@@ -28,15 +37,21 @@ final class PortDashboardStore {
   var editingLabelForPort: Int?
   var editingLabelText = ""
 
-  private let scanner = PortScanner()
-  private let processController = ProcessController()
+  private let scan: @Sendable () throws -> [PortRecord]
+  private let terminate: @Sendable ([Int], Bool) throws -> ProcessActionResult
   private var refreshTask: Task<Void, Never>?
   private var clearActionTask: Task<Void, Never>?
 
-  init() {
-    refreshTask = Task { [weak self] in
-      await self?.refreshLoop()
+  init(
+    startRefreshing: Bool = true,
+    scan: @escaping @Sendable () throws -> [PortRecord] = { try PortScanner().scan() },
+    terminate: @escaping @Sendable ([Int], Bool) throws -> ProcessActionResult = {
+      try ProcessController().terminate(pids: $0, force: $1)
     }
+  ) {
+    self.scan = scan
+    self.terminate = terminate
+    if startRefreshing { restartRefreshLoop() }
   }
 
   // MARK: - Computed: slots & records
@@ -74,10 +89,14 @@ final class PortDashboardStore {
 
   // MARK: - Filtered & sorted
 
+  var normalizedSearchQuery: String {
+    searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+  }
+
   var filteredWatchedSlots: [WatchedPortSlot] {
     let slots = watchedSlots
-    guard !searchQuery.isEmpty else { return slots }
-    let query = searchQuery.lowercased()
+    guard !normalizedSearchQuery.isEmpty else { return slots }
+    let query = normalizedSearchQuery
     return slots.filter { slot in
       if String(slot.port).contains(query) { return true }
       if let label = portLabels[slot.port], label.lowercased().contains(query) { return true }
@@ -89,8 +108,8 @@ final class PortDashboardStore {
 
   var filteredOtherRecords: [PortRecord] {
     let sorted = sortRecords(otherRecords)
-    guard !searchQuery.isEmpty else { return sorted }
-    let query = searchQuery.lowercased()
+    guard !normalizedSearchQuery.isEmpty else { return sorted }
+    let query = normalizedSearchQuery
     return sorted.filter { matchesSearch($0, query: query) }
   }
 
@@ -103,6 +122,8 @@ final class PortDashboardStore {
       if String(listener.pid).contains(query) { return true }
       if listener.user.lowercased().contains(query) { return true }
       if listener.command.lowercased().contains(query) { return true }
+      if listener.transport.rawValue.lowercased().contains(query) { return true }
+      if listener.endpoint.lowercased().contains(query) { return true }
     }
     return false
   }
@@ -113,10 +134,11 @@ final class PortDashboardStore {
       return records.sorted { $0.port < $1.port }
     case .processName:
       return records.sorted {
-        $0.primary.processName.localizedCaseInsensitiveCompare($1.primary.processName) == .orderedAscending
+        let comparison = $0.primary.processName.localizedCaseInsensitiveCompare($1.primary.processName)
+        return comparison == .orderedSame ? $0.port < $1.port : comparison == .orderedAscending
       }
     case .pid:
-      return records.sorted { $0.primary.pid < $1.primary.pid }
+      return records.sorted { ($0.primary.pid, $0.port) < ($1.primary.pid, $1.port) }
     }
   }
 
@@ -128,26 +150,37 @@ final class PortDashboardStore {
     defer { isRefreshing = false }
 
     do {
-      let scanner = self.scanner
+      let scan = self.scan
       let records = try await Task.detached(priority: .userInitiated) {
-        try scanner.scan()
+        try scan()
       }.value
       self.records = records
       self.lastUpdated = Date()
-      self.lastError = nil
+      self.lastScanError = nil
       notifyStatusChange()
     } catch {
-      self.lastError = error.localizedDescription
+      self.lastScanError = error.localizedDescription
       notifyStatusChange()
     }
   }
 
   func freePort(_ record: PortRecord, force: Bool = false) {
-    Task { await performFreePort(record, force: force) }
+    guard !isPerformingAction else { return }
+    isPerformingAction = true
+    Task {
+      defer { isPerformingAction = false }
+      await performTermination(pids: record.uniquePIDs, force: force)
+    }
   }
 
   func killAllMyPorts() {
-    Task { await performKillAllMyPorts() }
+    guard !isPerformingAction, !myRecords.isEmpty else { return }
+    let pids = Array(Set(myRecords.flatMap(\.uniquePIDs))).sorted()
+    isPerformingAction = true
+    Task {
+      defer { isPerformingAction = false }
+      await performTermination(pids: pids, force: false)
+    }
   }
 
   // MARK: - Export
@@ -254,59 +287,36 @@ final class PortDashboardStore {
 
   // MARK: - Private
 
-  private func performFreePort(_ record: PortRecord, force: Bool) async {
-    do {
-      let processController = self.processController
-      let result = try await Task.detached(priority: .userInitiated) {
-        try processController.freePort(record, force: force)
-      }.value
-
-      if result.failures.isEmpty {
-        let verb = force ? "Force-killed" : "Stopped"
-        lastActionMessage = "\(verb) \(result.killedPIDs.count) process\(result.killedPIDs.count == 1 ? "" : "es") on \(record.port)."
-        scheduleActionClear()
-      } else if result.killedPIDs.isEmpty {
-        lastError = result.failures.joined(separator: "\n")
-      } else {
-        lastActionMessage = "Freed part of \(record.port)."
-        scheduleActionClear()
-        lastError = result.failures.joined(separator: "\n")
-      }
-
-      await refreshNow()
-    } catch {
-      lastError = error.localizedDescription
-      notifyStatusChange()
-    }
+  func dismissActionError() {
+    lastActionError = nil
+    notifyStatusChange()
   }
 
-  private func performKillAllMyPorts() async {
-    let targets = myRecords
-    guard !targets.isEmpty else { return }
-
-    let targetPIDs = targets.flatMap(\.uniquePIDs)
-    let processController = self.processController
-    let result: ProcessActionResult
+  private func performTermination(pids: [Int], force: Bool) async {
+    lastActionError = nil
+    lastActionMessage = nil
+    clearActionTask?.cancel()
     do {
-      result = try await Task.detached(priority: .userInitiated) {
-        try processController.terminate(pids: targetPIDs, force: false)
+      let terminate = self.terminate
+      let result = try await Task.detached(priority: .userInitiated) {
+        try terminate(pids, force)
       }.value
-    } catch {
-      lastError = error.localizedDescription
-      notifyStatusChange()
-      return
-    }
 
-    let totalKilled = result.killedPIDs.count
-    let allFailures = result.failures
-    if allFailures.isEmpty {
-      lastActionMessage = "Stopped \(totalKilled) process\(totalKilled == 1 ? "" : "es") across \(targets.count) port(s)."
-    } else {
-      lastActionMessage = "Stopped \(totalKilled) process\(totalKilled == 1 ? "" : "es"). \(allFailures.count) failed."
-      lastError = allFailures.joined(separator: "\n")
+      if !result.killedPIDs.isEmpty {
+        let count = result.killedPIDs.count
+        let action = force ? "force-kill" : "stop"
+        lastActionMessage = "Sent \(action) request to \(count) process\(count == 1 ? "" : "es")."
+        scheduleActionClear()
+      }
+      if !result.failures.isEmpty {
+        lastActionError = result.failures.joined(separator: "\n")
+      }
+      notifyStatusChange()
+      await refreshNow()
+    } catch {
+      lastActionError = error.localizedDescription
+      notifyStatusChange()
     }
-    scheduleActionClear()
-    await refreshNow()
   }
 
   private func refreshLoop() async {
