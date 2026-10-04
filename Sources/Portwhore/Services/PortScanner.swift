@@ -1,12 +1,19 @@
+import Darwin
 import Foundation
 
 struct PortScanner: Sendable {
+  // -F emits one field per line, so names with spaces parse cleanly and +c 0
+  // keeps them untruncated ("ControlCenter", not "ControlCe").
+  private static let fieldArguments = ["-nP", "+c", "0", "-F", "pcuLnT"]
+
   func scan() throws -> [PortRecord] {
-    let currentUser = NSUserName()
-    let tcpListeners = try readListeners(arguments: ["-nP", "-iTCP", "-sTCP:LISTEN"], transport: .tcp)
-    let udpListeners = try readListeners(arguments: ["-nP", "-iUDP"], transport: .udp)
+    let currentUID = Int(getuid())
+    let tcpListeners = try readListeners(arguments: ["-iTCP", "-sTCP:LISTEN"], transport: .tcp)
+    let udpListeners = try readListeners(arguments: ["-iUDP"], transport: .udp)
     let merged = deduplicate(tcpListeners + udpListeners)
-    let commandsByPID = try lookupCommands(for: Set(merged.map(\.pid)))
+    let pids = Set(merged.map(\.pid))
+    let commandsByPID = try lookupCommands(for: pids)
+    let pathsByPID = Dictionary(uniqueKeysWithValues: pids.map { ($0, Self.executablePath(for: $0)) })
 
     let listeners = merged.map { raw in
       PortListener(
@@ -18,7 +25,8 @@ struct PortScanner: Sendable {
         transport: raw.transport,
         endpoint: raw.endpoint,
         state: raw.state,
-        isOwnedByCurrentUser: raw.user == currentUser
+        isOwnedByCurrentUser: raw.uid == currentUID,
+        isSystemService: PortScannerParsing.isSystemExecutable(pathsByPID[raw.pid] ?? nil)
       )
     }
 
@@ -48,20 +56,15 @@ struct PortScanner: Sendable {
   private func readListeners(arguments: [String], transport: NetworkTransport) throws -> [RawPortListener] {
     let output: String
     do {
-      output = try CommandRunner.run(executable: "/usr/sbin/lsof", arguments: arguments)
+      output = try CommandRunner.run(
+        executable: "/usr/sbin/lsof",
+        arguments: Self.fieldArguments + arguments
+      )
     } catch let CommandRunnerError.failed(status, message) where status == 1 && message.isEmpty {
       return []
     }
 
-    let lines = output.split(separator: "\n", omittingEmptySubsequences: true)
-
-    guard lines.count > 1 else {
-      return []
-    }
-
-    return lines.dropFirst().compactMap { line in
-      PortScannerParsing.parse(line: String(line), transport: transport)
-    }
+    return PortScannerParsing.parseFieldOutput(output, transport: transport)
   }
 
   private func deduplicate(_ listeners: [RawPortListener]) -> [RawPortListener] {
@@ -114,37 +117,109 @@ struct PortScanner: Sendable {
 
     return commandsByPID
   }
+
+  /// The real executable path; unlike argv it can't be rewritten by the process.
+  private static func executablePath(for pid: Int) -> String? {
+    var buffer = [UInt8](repeating: 0, count: Int(MAXPATHLEN) * 4)
+    let length = proc_pidpath(Int32(pid), &buffer, UInt32(buffer.count))
+    guard length > 0 else { return nil }
+    return String(decoding: buffer.prefix(Int(length)), as: UTF8.self)
+  }
 }
 
 enum PortScannerParsing {
-  static func parse(line: String, transport: NetworkTransport) -> RawPortListener? {
-    let columns = line.split(
-      maxSplits: 8,
-      omittingEmptySubsequences: true,
-      whereSeparator: \.isWhitespace
-    )
+  private static let systemPathPrefixes = ["/System/", "/usr/libexec/", "/usr/sbin/", "/sbin/"]
 
-    guard columns.count >= 9, let pid = Int(columns[1]) else {
-      return nil
+  /// Parses `lsof -F pcuLnT` output. Each `p` line starts a process; each `n`
+  /// line is one of its sockets, followed by that socket's `T` state fields.
+  static func parseFieldOutput(_ output: String, transport: NetworkTransport) -> [RawPortListener] {
+    var listeners: [RawPortListener] = []
+    var pid: Int?
+    var processName = ""
+    var uid: Int?
+    var login: String?
+    var endpoint: String?
+    var state: String?
+
+    func flushSocket() {
+      defer {
+        endpoint = nil
+        state = nil
+      }
+      guard let pid, let uid, let endpoint,
+            let listener = makeListener(
+              pid: pid, processName: processName, uid: uid, login: login,
+              endpoint: endpoint, state: state, transport: transport
+            ) else {
+        return
+      }
+      listeners.append(listener)
     }
 
-    let processName = String(columns[0])
-    let user = String(columns[2])
-    let endpoint = String(columns[8])
+    for line in output.split(separator: "\n", omittingEmptySubsequences: true) {
+      guard let field = line.first else { continue }
+      let value = String(line.dropFirst())
 
-    guard let port = Self.extractPort(from: endpoint) else {
+      switch field {
+      case "p":
+        flushSocket()
+        pid = Int(value)
+        processName = ""
+        uid = nil
+        login = nil
+      case "c":
+        processName = value
+      case "u":
+        uid = Int(value)
+      case "L":
+        login = value
+      case "f":
+        flushSocket()
+      case "n":
+        endpoint = value
+      case "T":
+        if value.hasPrefix("ST=") {
+          state = String(value.dropFirst(3))
+        }
+      default:
+        continue
+      }
+    }
+    flushSocket()
+
+    return listeners
+  }
+
+  private static func makeListener(
+    pid: Int,
+    processName: String,
+    uid: Int,
+    login: String?,
+    endpoint: String,
+    state: String?,
+    transport: NetworkTransport
+  ) -> RawPortListener? {
+    // A connected UDP socket (local->remote) is an outbound client such as a
+    // browser's QUIC connection, not something listening for you.
+    guard !endpoint.contains("->"), let port = extractPort(from: endpoint) else {
       return nil
     }
 
     return RawPortListener(
       port: port,
       pid: pid,
-      processName: processName,
-      user: user,
+      processName: processName.isEmpty ? "PID \(pid)" : processName,
+      uid: uid,
+      user: login ?? String(uid),
       transport: transport,
       endpoint: cleanEndpoint(endpoint),
-      state: extractState(from: endpoint)
+      state: state ?? extractState(from: endpoint)
     )
+  }
+
+  static func isSystemExecutable(_ path: String?) -> Bool {
+    guard let path else { return false }
+    return systemPathPrefixes.contains { path.hasPrefix($0) }
   }
 
   static func cleanEndpoint(_ endpoint: String) -> String {
@@ -155,7 +230,6 @@ enum PortScannerParsing {
   }
 
   static func extractPort(from endpoint: String) -> Int? {
-    // Connected UDP sockets include local->remote; only the local port is occupied here.
     let trimmed = cleanEndpoint(endpoint).components(separatedBy: "->")[0]
     guard let range = trimmed.range(of: #":(\d+)$"#, options: .regularExpression) else {
       return nil
@@ -180,6 +254,7 @@ struct RawPortListener: Hashable, Sendable {
   let port: Int
   let pid: Int
   let processName: String
+  let uid: Int
   let user: String
   let transport: NetworkTransport
   let endpoint: String

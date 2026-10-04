@@ -29,6 +29,9 @@ struct ActivePortRowView: View {
   private var label: String? { store.portLabels[record.port] }
   private var wellKnown: String? { WellKnownPorts.description(for: record.port) }
   private var tone: PortOwnershipTone { record.ownershipTone }
+  private var systemService: SystemServices.Service? {
+    tone == .system ? SystemServices.service(for: record.primary.processName) : nil
+  }
 
   var body: some View {
     VStack(alignment: .leading, spacing: 8) {
@@ -50,6 +53,11 @@ struct ActivePortRowView: View {
               .font(.system(size: 11, weight: .medium))
               .foregroundStyle(tone.color)
               .lineLimit(1)
+          } else if tone == .system {
+            Text("macOS · \(systemService?.name ?? "system service")")
+              .font(.system(size: 11))
+              .foregroundStyle(PortwhorePalette.textSecondary)
+              .lineLimit(1)
           } else if let wellKnown {
             Text(wellKnown)
               .font(.system(size: 11))
@@ -65,14 +73,17 @@ struct ActivePortRowView: View {
 
         Spacer(minLength: 4)
 
-        Button(record.primaryActionTitle) {
-          store.freePort(record, force: false)
+        // macOS services get relaunched by launchd, so stopping them is in the menu only.
+        if tone != .system {
+          Button(record.primaryActionTitle) {
+            store.freePort(record, force: false)
+          }
+          .buttonStyle(.bordered)
+          .controlSize(.small)
+          .tint(tone.color)
+          .disabled(store.isPerformingAction || !store.hasCurrentScan)
+          .help("Send a stop request to the processes using port \(record.port)")
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .tint(tone.color)
-        .disabled(store.isPerformingAction || !store.hasCurrentScan)
-        .help("Send a stop request to the processes using port \(record.port)")
 
         portMenu
       }
@@ -113,6 +124,14 @@ struct ActivePortRowView: View {
         .foregroundStyle(PortwhorePalette.textMuted)
         .lineLimit(1)
         .padding(.leading, 52)
+
+      if let hint = systemService?.hint {
+        Text(hint)
+          .font(.system(size: 11))
+          .foregroundStyle(PortwhorePalette.textSecondary)
+          .fixedSize(horizontal: false, vertical: true)
+          .padding(.leading, 52)
+      }
     }
     .padding(10)
     .background(rowBackground, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -173,13 +192,22 @@ struct ActivePortRowView: View {
 
       Divider()
 
-      Button("Open in Browser") {
-        if let url = URL(string: "http://localhost:\(record.port)") {
-          NSWorkspace.shared.open(url)
+      if record.hasTCPListener {
+        Button("Open in Browser") {
+          if let url = URL(string: "http://localhost:\(record.port)") {
+            NSWorkspace.shared.open(url)
+          }
         }
+
+        Divider()
       }
 
-      Divider()
+      if tone == .system {
+        Button("Stop") {
+          store.freePort(record, force: false)
+        }
+        .disabled(store.isPerformingAction || !store.hasCurrentScan)
+      }
 
       Button("Force Kill", role: .destructive) {
         store.freePort(record, force: true)

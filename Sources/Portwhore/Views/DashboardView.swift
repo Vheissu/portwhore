@@ -17,14 +17,20 @@ struct DashboardView: View {
     }
     .background(.regularMaterial)
     .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: store.showSettings)
-    .alert("Stop all your processes?", isPresented: $store.confirmKillAll) {
+    .alert("Stop your hot ports?", isPresented: $store.confirmKillAll) {
       Button("Cancel", role: .cancel) {}
-      Button("Stop All", role: .destructive) {
-        store.killAllMyPorts()
+      Button("Stop", role: .destructive) {
+        store.stopHotPorts()
       }
     } message: {
-      Text("This sends a stop request to \(store.killableProcessCount) processes you own across \(store.killableCount) ports. A process may serve more than one port.")
+      Text(bulkStopMessage)
     }
+  }
+
+  private var bulkStopMessage: String {
+    let ports = store.bulkStopRecords.map { String($0.port) }.joined(separator: ", ")
+    let count = store.bulkStopProcessCount
+    return "Sends a stop request to \(count) process\(count == 1 ? "" : "es") on port\(store.bulkStopRecords.count == 1 ? "" : "s") \(ports). Other listeners are left alone."
   }
 
   // MARK: - Main Content
@@ -42,6 +48,9 @@ struct DashboardView: View {
         VStack(alignment: .leading, spacing: 18) {
           if let msg = store.lastActionMessage {
             banner(msg, systemImage: "checkmark.circle.fill", tint: PortwhorePalette.mine)
+          }
+          if !store.unresponsivePIDs.isEmpty {
+            unresponsiveBanner
           }
           if let err = store.lastError {
             banner(err, systemImage: "exclamationmark.triangle.fill", tint: PortwhorePalette.protected)
@@ -131,16 +140,16 @@ struct DashboardView: View {
 
       Spacer()
 
-      if store.killableCount > 0 {
+      if !store.bulkStopRecords.isEmpty {
         Button(role: .destructive) {
           store.confirmKillAll = true
         } label: {
-          Label("Stop All Mine", systemImage: "stop.circle")
+          Label("Stop Hot Ports", systemImage: "stop.circle")
         }
         .buttonStyle(.bordered)
         .controlSize(.small)
         .tint(.red)
-        .help("Stop every process you own")
+        .help("Stop your processes on watched ports")
         .disabled(store.isPerformingAction || !store.hasCurrentScan)
       }
     }
@@ -205,6 +214,39 @@ struct DashboardView: View {
     .padding(.vertical, 9)
     .frame(maxWidth: .infinity, alignment: .leading)
     .background(tint.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+  }
+
+  private var unresponsiveBanner: some View {
+    let pids = store.unresponsivePIDs
+    let list = pids.map(String.init).joined(separator: ", ")
+    let message = pids.count == 1
+      ? "PID \(list) is still running after a stop request."
+      : "PIDs \(list) are still running after a stop request."
+
+    return VStack(alignment: .leading, spacing: 8) {
+      HStack(spacing: 8) {
+        Image(systemName: "hourglass")
+          .foregroundStyle(PortwhorePalette.shared)
+        Text(message)
+          .font(.system(size: 12))
+          .fixedSize(horizontal: false, vertical: true)
+        Spacer(minLength: 0)
+      }
+      HStack(spacing: 8) {
+        Button("Force Kill", role: .destructive) { store.forceKillUnresponsive() }
+          .buttonStyle(.bordered)
+          .tint(.red)
+          .disabled(store.isPerformingAction)
+        Button("Dismiss") { store.dismissUnresponsive() }
+          .buttonStyle(.borderless)
+      }
+      .controlSize(.small)
+      .padding(.leading, 24)
+    }
+    .padding(.horizontal, 12)
+    .padding(.vertical, 9)
+    .frame(maxWidth: .infinity, alignment: .leading)
+    .background(PortwhorePalette.shared.opacity(0.10), in: RoundedRectangle(cornerRadius: 8, style: .continuous))
   }
 
   // MARK: - Section

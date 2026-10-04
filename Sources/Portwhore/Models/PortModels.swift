@@ -8,6 +8,8 @@ enum NetworkTransport: String, Hashable, Sendable {
 enum PortOwnershipTone: Sendable {
   case free
   case mine
+  /// Yours, but run by macOS (ControlCenter, rapportd…). launchd restarts these.
+  case system
   case shared
   case protected
 }
@@ -28,6 +30,7 @@ struct PortListener: Identifiable, Hashable, Sendable {
   let endpoint: String
   let state: String?
   let isOwnedByCurrentUser: Bool
+  var isSystemService = false
 
   var id: String {
     "\(transport.rawValue)-\(port)-\(pid)"
@@ -73,7 +76,7 @@ struct PortRecord: Identifiable, Hashable, Sendable {
     }
 
     if listeners.allSatisfy(\.isOwnedByCurrentUser) {
-      return .mine
+      return listeners.contains(where: \.isSystemService) ? .system : .mine
     }
 
     if listeners.contains(where: { $0.user == "root" }) {
@@ -81,6 +84,10 @@ struct PortRecord: Identifiable, Hashable, Sendable {
     }
 
     return .shared
+  }
+
+  var hasTCPListener: Bool {
+    listeners.contains { $0.transport == .tcp }
   }
 
   var primaryActionTitle: String {

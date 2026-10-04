@@ -32,6 +32,14 @@ struct PortModelsTests {
     #expect(record.ownershipTone == .protected)
   }
 
+  @Test("Your macOS services are classed as system, not yours")
+  func classifiesSystemRecords() {
+    var service = listener(pid: 723, user: "dwayne", owned: true)
+    service.isSystemService = true
+    #expect(PortRecord(port: 5000, listeners: [service]).ownershipTone == .system)
+    #expect(PortRecord(port: 5000, listeners: [listener(pid: 9, user: "dwayne", owned: true)]).ownershipTone == .mine)
+  }
+
   private func listener(
     pid: Int,
     user: String,

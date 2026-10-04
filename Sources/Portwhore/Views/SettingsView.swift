@@ -8,6 +8,8 @@ struct SettingsView: View {
   @State private var addLabelPortText = ""
   @State private var addLabelValueText = ""
   @State private var confirmReset = false
+  @State private var launchAtLogin = LoginItem.isEnabled
+  @State private var launchAtLoginError: String?
 
   private let intervals: [(String, TimeInterval)] = [
     ("2s", 2), ("5s", 5), ("10s", 10), ("30s", 30),
@@ -22,7 +24,7 @@ struct SettingsView: View {
 
       Form {
         watchedPortsSection
-        refreshIntervalSection
+        generalSection
         portLabelsSection
 
         Section {
@@ -127,8 +129,7 @@ struct SettingsView: View {
   }
 
   private func addWatchedPort() {
-    let trimmed = addPortText.trimmingCharacters(in: .whitespaces)
-    guard let port = Int(trimmed), port >= 1, port <= 65535 else {
+    guard let port = PortValidation.normalizedPort(from: addPortText) else {
       addPortError = "1\u{2013}65535"
       return
     }
@@ -141,17 +142,41 @@ struct SettingsView: View {
     addPortError = nil
   }
 
-  // MARK: - Refresh Interval
+  // MARK: - General
 
-  private var refreshIntervalSection: some View {
-    Section("Refresh Interval") {
+  private var generalSection: some View {
+    Section {
       Picker("Scan every", selection: refreshBinding) {
         ForEach(intervals, id: \.1) { label, interval in
           Text(label).tag(interval)
         }
       }
       .pickerStyle(.segmented)
+
+      Toggle("Open at login", isOn: launchAtLoginBinding)
+      if let launchAtLoginError {
+        Text(launchAtLoginError)
+          .font(.system(size: 11))
+          .foregroundStyle(PortwhorePalette.protected)
+      }
+    } header: {
+      Text("General")
     }
+  }
+
+  private var launchAtLoginBinding: Binding<Bool> {
+    Binding(
+      get: { launchAtLogin },
+      set: { enabled in
+        do {
+          try LoginItem.setEnabled(enabled)
+          launchAtLoginError = nil
+        } catch {
+          launchAtLoginError = "Couldn\u{2019}t update the login item: \(error.localizedDescription)"
+        }
+        launchAtLogin = LoginItem.isEnabled
+      }
+    )
   }
 
   private var refreshBinding: Binding<TimeInterval> {
@@ -207,10 +232,8 @@ struct SettingsView: View {
   }
 
   private func addLabel() {
-    guard let port = Int(addLabelPortText.trimmingCharacters(in: .whitespaces)),
-          port >= 1, port <= 65535 else { return }
-    let label = addLabelValueText.trimmingCharacters(in: .whitespaces)
-    guard !label.isEmpty else { return }
+    guard let port = PortValidation.normalizedPort(from: addLabelPortText),
+          let label = PortValidation.sanitizedLabel(addLabelValueText) else { return }
     store.setPortLabel(port, label: label)
     addLabelPortText = ""
     addLabelValueText = ""

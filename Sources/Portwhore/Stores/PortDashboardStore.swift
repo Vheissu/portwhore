@@ -18,6 +18,8 @@ final class PortDashboardStore {
   var lastScanError: String?
   var lastActionError: String?
   var isPerformingAction = false
+  /// Processes that were sent SIGTERM but were still alive after the grace period.
+  var unresponsivePIDs: [Int] = []
 
   var lastError: String? {
     let errors = [lastScanError, lastActionError].compactMap { $0 }
@@ -40,6 +42,7 @@ final class PortDashboardStore {
   private let scan: @Sendable () throws -> [PortRecord]
   private let terminate: @Sendable ([Int], Bool) throws -> ProcessActionResult
   private var refreshTask: Task<Void, Never>?
+  private var needsAnotherRefresh = false
   private var clearActionTask: Task<Void, Never>?
 
   init(
@@ -72,19 +75,27 @@ final class PortDashboardStore {
   }
 
   var killableCount: Int {
-    records.filter { $0.listeners.allSatisfy(\.isOwnedByCurrentUser) }.count
-  }
-
-  var killableProcessCount: Int {
-    Set(myRecords.flatMap(\.uniquePIDs)).count
+    myRecords.count
   }
 
   var protectedCount: Int {
-    records.filter { !$0.listeners.allSatisfy(\.isOwnedByCurrentUser) }.count
+    records.filter { $0.ownershipTone == .shared || $0.ownershipTone == .protected }.count
   }
 
+  /// Ports where every listener is yours and none is a macOS service.
   var myRecords: [PortRecord] {
-    records.filter { $0.listeners.allSatisfy(\.isOwnedByCurrentUser) }
+    records.filter { $0.ownershipTone == .mine }
+  }
+
+  /// Bulk stop only touches hot ports. Your other listeners are mostly apps
+  /// (browsers, editors, sync clients) that hold a socket open; a bulk SIGTERM
+  /// would quit them.
+  var bulkStopRecords: [PortRecord] {
+    watchedSlots.compactMap(\.record).filter { $0.ownershipTone == .mine }
+  }
+
+  var bulkStopProcessCount: Int {
+    Set(bulkStopRecords.flatMap(\.uniquePIDs)).count
   }
 
   // MARK: - Filtered & sorted
@@ -145,23 +156,29 @@ final class PortDashboardStore {
   // MARK: - Port actions
 
   func refreshNow() async {
-    guard !isRefreshing else { return }
+    // A scan already in flight may predate a stop action, so run one more after it.
+    guard !isRefreshing else {
+      needsAnotherRefresh = true
+      return
+    }
     isRefreshing = true
     defer { isRefreshing = false }
 
-    do {
-      let scan = self.scan
-      let records = try await Task.detached(priority: .userInitiated) {
-        try scan()
-      }.value
-      self.records = records
-      self.lastUpdated = Date()
-      self.lastScanError = nil
+    repeat {
+      needsAnotherRefresh = false
+      do {
+        let scan = self.scan
+        let records = try await Task.detached(priority: .userInitiated) {
+          try scan()
+        }.value
+        self.records = records
+        self.lastUpdated = Date()
+        self.lastScanError = nil
+      } catch {
+        self.lastScanError = error.localizedDescription
+      }
       notifyStatusChange()
-    } catch {
-      self.lastScanError = error.localizedDescription
-      notifyStatusChange()
-    }
+    } while needsAnotherRefresh
   }
 
   func freePort(_ record: PortRecord, force: Bool = false) {
@@ -173,14 +190,28 @@ final class PortDashboardStore {
     }
   }
 
-  func killAllMyPorts() {
-    guard !isPerformingAction, !myRecords.isEmpty else { return }
-    let pids = Array(Set(myRecords.flatMap(\.uniquePIDs))).sorted()
+  func stopHotPorts() {
+    guard !isPerformingAction, !bulkStopRecords.isEmpty else { return }
+    let pids = Array(Set(bulkStopRecords.flatMap(\.uniquePIDs))).sorted()
     isPerformingAction = true
     Task {
       defer { isPerformingAction = false }
       await performTermination(pids: pids, force: false)
     }
+  }
+
+  func forceKillUnresponsive() {
+    guard !isPerformingAction, !unresponsivePIDs.isEmpty else { return }
+    let pids = unresponsivePIDs
+    isPerformingAction = true
+    Task {
+      defer { isPerformingAction = false }
+      await performTermination(pids: pids, force: true)
+    }
+  }
+
+  func dismissUnresponsive() {
+    unresponsivePIDs = []
   }
 
   // MARK: - Export
@@ -241,7 +272,7 @@ final class PortDashboardStore {
 
   func setRefreshInterval(_ interval: TimeInterval) {
     refreshInterval = PortValidation.normalizedRefreshInterval(interval)
-    PortwhoreDefaults.refreshInterval = interval
+    PortwhoreDefaults.refreshInterval = refreshInterval
     restartRefreshLoop()
   }
 
@@ -295,6 +326,7 @@ final class PortDashboardStore {
   private func performTermination(pids: [Int], force: Bool) async {
     lastActionError = nil
     lastActionMessage = nil
+    unresponsivePIDs = []
     clearActionTask?.cancel()
     do {
       let terminate = self.terminate
@@ -302,14 +334,23 @@ final class PortDashboardStore {
         try terminate(pids, force)
       }.value
 
-      if !result.killedPIDs.isEmpty {
-        let count = result.killedPIDs.count
-        let action = force ? "force-kill" : "stop"
-        lastActionMessage = "Sent \(action) request to \(count) process\(count == 1 ? "" : "es")."
+      let exited = result.killedPIDs.count - result.stillRunningPIDs.count
+      if exited > 0 {
+        let verb = force ? "Killed" : "Stopped"
+        lastActionMessage = "\(verb) \(exited) process\(exited == 1 ? "" : "es")."
         scheduleActionClear()
       }
+      if !result.stillRunningPIDs.isEmpty {
+        if force {
+          let list = result.stillRunningPIDs.map(String.init).joined(separator: ", ")
+          lastActionError = "PID \(list) survived SIGKILL. It may be stuck in the kernel; try again shortly."
+        } else {
+          unresponsivePIDs = result.stillRunningPIDs
+        }
+      }
       if !result.failures.isEmpty {
-        lastActionError = result.failures.joined(separator: "\n")
+        let failures = result.failures.joined(separator: "\n")
+        lastActionError = [lastActionError, failures].compactMap { $0 }.joined(separator: "\n")
       }
       notifyStatusChange()
       await refreshNow()

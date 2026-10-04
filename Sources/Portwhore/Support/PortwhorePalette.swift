@@ -22,11 +22,13 @@ enum PortwhorePalette {
   // MARK: Ownership semantics
   //
   // green  → every listener is yours, safe to stop
+  // gray   → yours, but a macOS service that launchd will restart
   // orange → shared with another user
   // red    → owned by root / protected
   // muted  → free
 
   static let mine = Color.green
+  static let system = Color(nsColor: .systemGray)
   static let shared = Color.orange
   static let protected = Color.red
   static let free = Color.secondary
@@ -37,6 +39,7 @@ extension PortOwnershipTone {
   var color: Color {
     switch self {
     case .mine: return PortwhorePalette.mine
+    case .system: return PortwhorePalette.system
     case .shared: return PortwhorePalette.shared
     case .protected: return PortwhorePalette.protected
     case .free: return PortwhorePalette.free

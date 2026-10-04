@@ -50,15 +50,76 @@ struct PortDashboardStoreTests {
       calls.withLock { $0.append(pids) }
       return ProcessActionResult(killedPIDs: pids, failures: [])
     })
+    store.watchedPorts = [3000, 8080]
     store.records = [record(port: 3000), record(port: 8080)]
     #expect(store.killableCount == 2)
-    #expect(store.killableProcessCount == 1)
-    store.killAllMyPorts()
-    store.killAllMyPorts()
+    #expect(store.bulkStopProcessCount == 1)
+    store.stopHotPorts()
+    store.stopHotPorts()
     store.freePort(record(port: 3000))
     try await finishAction(store)
     #expect(calls.withLock { $0 } == [[42]])
-    #expect(store.lastActionMessage == "Sent stop request to 1 process.")
+    #expect(store.lastActionMessage == "Stopped 1 process.")
+  }
+
+  @Test("Bulk stop only targets your non-system processes on hot ports")
+  func bulkStopScope() async throws {
+    let calls = Mutex([[Int]]())
+    let store = PortDashboardStore(startRefreshing: false, scan: { [] }, terminate: { pids, _ in
+      calls.withLock { $0.append(pids) }
+      return ProcessActionResult(killedPIDs: pids, failures: [])
+    })
+    store.watchedPorts = [3000, 5000, 6379]
+    store.records = [
+      record(port: 3000, pid: 10),
+      record(port: 5000, pid: 20, system: true),
+      record(port: 6379, pid: 30, owned: false),
+      record(port: 5353, pid: 40),
+    ]
+    #expect(store.bulkStopRecords.map(\.port) == [3000])
+    #expect(store.killableCount == 2)
+    #expect(store.protectedCount == 1)
+    store.stopHotPorts()
+    try await finishAction(store)
+    #expect(calls.withLock { $0 } == [[10]])
+  }
+
+  @Test("Processes that ignore SIGTERM can be force killed from the banner")
+  func unresponsiveProcesses() async throws {
+    let calls = Mutex([(pids: [Int], force: Bool)]())
+    let store = PortDashboardStore(startRefreshing: false, scan: { [] }, terminate: { pids, force in
+      calls.withLock { $0.append((pids, force)) }
+      return ProcessActionResult(killedPIDs: pids, failures: [], stillRunningPIDs: force ? [] : pids)
+    })
+    store.freePort(record(port: 3000))
+    try await finishAction(store)
+    #expect(store.unresponsivePIDs == [42])
+    #expect(store.lastActionMessage == nil)
+    #expect(store.lastActionError == nil)
+
+    store.forceKillUnresponsive()
+    try await finishAction(store)
+    #expect(store.unresponsivePIDs.isEmpty)
+    #expect(store.lastActionMessage == "Killed 1 process.")
+    #expect(calls.withLock { $0.map(\.force) } == [false, true])
+  }
+
+  @Test("A refresh requested mid-scan runs again afterwards")
+  func coalescesRefreshes() async throws {
+    let scans = Mutex(0)
+    let gate = Mutex(true)
+    let store = PortDashboardStore(startRefreshing: false, scan: {
+      scans.withLock { $0 += 1 }
+      while gate.withLock({ $0 }) { Thread.sleep(forTimeInterval: 0.005) }
+      return []
+    })
+    let first = Task { await store.refreshNow() }
+    while !store.isRefreshing { try await Task.sleep(for: .milliseconds(5)) }
+    await store.refreshNow()
+    gate.withLock { $0 = false }
+    await first.value
+    #expect(scans.withLock { $0 } == 2)
+    #expect(!store.isRefreshing)
   }
 
   @Test("Search trims whitespace and finds transports and endpoints")
@@ -96,11 +157,11 @@ struct PortDashboardStoreTests {
     #expect(!store.isPerformingAction)
   }
 
-  private func record(port: Int) -> PortRecord {
+  private func record(port: Int, pid: Int = 42, owned: Bool = true, system: Bool = false) -> PortRecord {
     PortRecord(port: port, listeners: [PortListener(
-      port: port, pid: 42, processName: "node", command: "node server.js",
-      user: "test", transport: .tcp, endpoint: "127.0.0.1:\(port)",
-      state: "LISTEN", isOwnedByCurrentUser: true
+      port: port, pid: pid, processName: "node", command: "node server.js",
+      user: owned ? "test" : "someone", transport: .tcp, endpoint: "127.0.0.1:\(port)",
+      state: "LISTEN", isOwnedByCurrentUser: owned, isSystemService: system
     )])
   }
 }
